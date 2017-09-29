@@ -13,7 +13,6 @@
     "express": "^4.16.1",
     "express-ws": "^3.0.0",
     "inherits": "^2.0.3",
-    "mavlink": "github:andygreenegrass/node-mavlink",
     "serialport": "^5.0.0"
   }
 }
