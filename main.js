@@ -1,8 +1,10 @@
 const {fork} = require('child_process');
 const bunyan = require('bunyan');
+const path = require('path');
+var WSServer = require('ws').Server;
 const express = require('express');
 const app = express();
-const expressWs = require('express-ws')(app);
+var server = require('http').createServer();
 
 const log = bunyan.createLogger({name: 'Quad'});
 
@@ -34,24 +36,25 @@ vision.on('message', (msg) =>{
       break;
   }
 });
-//for groundstation
 
-app.ws('/', function(ws, req) {
-  ws.on('message', function(msg) {
-    console.log(msg);
+
+//for groundstation
+app.use(express.static(path.join(__dirname, '/frontend')));
+
+
+var wss = new WSServer({server: server});
+
+wss.on('connection', function (ws) {
+  ws.send(JSON.stringify(process.memoryUsage()), function () { /* ignore errors */ });
+  log.info('Frontend connected');
+  ws.on('close', function () {
+    log.info('Frontend disconnected');
+    clearInterval(id);
   });
 });
 
-const socketInstances = expressWs.get('/');
-
-const sendMessage = (data) =>{
-  socketInstances.clients.forEach(client => {
-    client.send(data);
-  })
-};
-
-app.use(express.static('frontend'));
-app.listen(3000, ()=>{
+server.on('request', app);
+server.listen(3000, ()=>{
   log.info('App is listeing on port 3000')
 });
 
