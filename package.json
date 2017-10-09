@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "bunyan": "^1.8.12",
+    "bunyan-socket-stream": "0.0.4",
     "express": "^4.16.1",
     "express-ws": "^3.0.0",
     "inherits": "^2.0.3",

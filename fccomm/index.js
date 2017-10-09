@@ -3,7 +3,7 @@ const SerialPort = require('serialport');
 const observe = require('observe');
 const EventEmitter = require('events');
 
-const MAVLink = require('../apm/mavlink');
+const mavlink = require('../apm/mavlink');
 
 const modes = {
   'INIT': {next: 'READY'},
@@ -22,7 +22,7 @@ const params = {
     mission_started: false,
     last_heartbeat: new Date().getTime(),
     battery_voltage: 0,
-    current_mode: 'N/A'
+    current_mode: 'WAITING'
   },
   atti_c: { //Calculated attitude
     roll: 0,
@@ -39,14 +39,17 @@ const params = {
 const state = observe(params);
 
 state.on('change', (change) => {
-  if(change.property[0] ==='atti_c'){
+  if (change.property[0] === 'atti_c') {
     //Attitude new values to FC
+  }else if (change.property[0] === 'status'){
+    //Send new status report
+    process.send({type: 'status', payload: state.subject.status})
   }
 });
 
 
-var connection = new SerialPort('/dev/ttyACM0', {
-  baudRate: 115200
+var connection = new SerialPort('/dev/ttyUSB5', {
+  baudRate: 57600
 });
 
 //Handle parent messages
@@ -63,7 +66,8 @@ process.on('message', msg => {
 });
 
 
-class QEmitter extends EventEmitter {}
+class QEmitter extends EventEmitter {
+}
 
 const QE = new QEmitter();
 
@@ -75,35 +79,42 @@ QE.on('armed', () => {
 });
 
 
-
 connection.on('data', function (data) {
   mavlinkParser.parseBuffer(data);
 });
 
 // Attach an event handler for any valid MAVLink message
-mavlinkParser.on('message', function (message) {
-  console.log('Got a message of any type!');
-  console.log(message);
+mavlinkParser.on('message', (message) => {
+  //console.log('Got a message of any type!');
+  //console.log(message);
 });
 
 
-mavlinkParser.on('HEARTBEAT', function (message) {
-  console.log('Got a heartbeat message!');
-  console.log(message); // message is a HEARTBEAT message
+mavlinkParser.on('HEARTBEAT', (message) => {
+  //console.log('Got a heartbeat message!');
+  //console.log(message); // message is a HEARTBEAT message
+});
+
+mavlinkParser.on('STATUSTEXT', (message) => {
+
+});
+
+mavlinkParser.on('SYS_STATUS', (message) => {
+  state.set('status.battery_voltage', message.voltage_battery)
 });
 
 
-mavlinkParser.on('RC_CHANNELS_RAW', function (message) {
+mavlinkParser.on('RC_CHANNELS_RAW', (message) => {
   const ch8 = message.chan8_raw;
   console.log('CH8', ch8); // message is a HEARTBEAT message
   if (ch8 > 1600) {
-    QE.emit('start')
+    //QE.emit('start')
   } else if (ch8 < 1400) {
-    QE.emit('stop')
+    //QE.emit('stop')
   }
 });
 //
-mavlinkParser.on('COMMAND_ACK', function (message) {
+mavlinkParser.on('COMMAND_ACK', (message) => {
   console.log('COMMAND', message.command, 'RESULT', message.result); // message is a HEARTBEAT message
   switch (message.command) {
     case 400: //ARM DISARM
