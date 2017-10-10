@@ -6,8 +6,9 @@ const EventEmitter = require('events');
 const mavlink = require('../apm/mavlink');
 
 const modes = {
-  'INIT': {next: 'READY'},
-  'READY': {next: 'ARMING'},
+  'WAITING': {next: 'INIT', action: null},
+  'INIT': {next: 'READY', action: init},
+  'READY': {next: 'ARMING', action: arming},
   'ARMING': {next: 'ARMED'},
   'ARMED': {next: 'TAKE_OFF'},
   'TAKE_OFF': {next: 'MISSION'},
@@ -47,6 +48,39 @@ state.on('change', (change) => {
   }
 });
 
+/*STATE ACTIONS */
+
+function getNext(err) {
+  if(err){
+    //TODO
+  }
+
+  setNext();
+
+  const current = state.subject.status.current_mode;
+  current.action(getNext)
+};
+
+function setNext(){
+
+}
+
+
+function init (next) {
+
+
+  next();
+};
+
+function arming (next) {
+
+  next()
+};
+
+
+
+/* END OF STATE ACTIONS */
+
 
 var connection = new SerialPort('/dev/ttyUSB5', {
   baudRate: 57600
@@ -66,8 +100,7 @@ process.on('message', msg => {
 });
 
 
-class QEmitter extends EventEmitter {
-}
+class QEmitter extends EventEmitter {}
 
 const QE = new QEmitter();
 
