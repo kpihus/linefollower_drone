@@ -6,15 +6,12 @@ const EventEmitter = require('events');
 const mavlink = require('../apm/mavlink');
 
 const modes = {
-  'WAITING': {next: 'INIT', action: null},
-  'INIT': {next: 'READY', action: init},
-  'READY': {next: 'ARMING', action: arming},
-  'ARMING': {next: 'ARMED'},
-  'ARMED': {next: 'TAKE_OFF'},
-  'TAKE_OFF': {next: 'MISSION'},
-  'MISSION': {next: 'FINISH'},
-  'FINISH': {next: 'LAND'},
-  'LAND': {next: null}
+  'WAITING': {next: 'INIT', action: setNext},
+  'INIT': {next: 'ARMING', action: init},
+  'ARMING': {next: 'TAKE_OFF', action: arming},
+  'TAKE_OFF': {next: 'MISSION', action: takeOff},
+  'MISSION': {next: 'LAND', action: mission},
+  'LAND': {next: null, action: land}
 };
 
 const params = {
@@ -43,41 +40,59 @@ state.on('change', (change) => {
   if (change.property[0] === 'atti_c') {
     //Attitude new values to FC
   }else if (change.property[0] === 'status'){
+    if(change.property[1] ==='current_mode'){
+      //Mode changed
+      const mode = state.subject.status.current_mode;
+      modes[mode].action(setNext);
+    }
     //Send new status report
-    process.send({type: 'status', payload: state.subject.status})
+    console.log('STATUS CHANGE')
   }
 });
 
 /*STATE ACTIONS */
 
-function getNext(err) {
+function setNext(err){
   if(err){
-    //TODO
+    console.error(err)
   }
-
-  setNext();
-
-  const current = state.subject.status.current_mode;
-  current.action(getNext)
-};
-
-function setNext(){
-
+  const next = modes[state.subject.status.current_mode].next;
+  if(!next){
+    process.exit(0)
+  }
+  state.set('status.current_mode', next);
 }
 
 
 function init (next) {
-
+  console.log('INIT');
 
   next();
 };
 
 function arming (next) {
-
-  next()
+  console.log('ARMING');
+  QE.on('armed', () => {
+    state.set('status.armed', true);
+    process.send({type: 'info', payload: 'Motors armed'})
+    next()
+  });
 };
 
+function takeOff(next){
+  console.log('TAKEOFF');
+  next();
+}
 
+function mission(next){
+  console.log('MISSION');
+  next();
+}
+
+function land(next){
+  console.log('LAND');
+  next();
+}
 
 /* END OF STATE ACTIONS */
 
@@ -106,10 +121,6 @@ const QE = new QEmitter();
 
 mavlinkParser = new MAVLink();
 
-QE.on('armed', () => {
-  state.set('status.armed', true);
-  process.send({type: 'info', payload: 'Motors armed'})
-});
 
 
 connection.on('data', function (data) {
