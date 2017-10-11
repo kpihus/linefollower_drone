@@ -1,3 +1,0 @@
-/home/kpihus/Documents/Robotex/quadcopter/FlightController/controller/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/kpihus/Documents/Robotex/quadcopter/FlightController/controller/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/kpihus/Documents/Robotex/quadcopter/FlightController/controller/cmake-build-debug/CMakeFiles/controller.dir
