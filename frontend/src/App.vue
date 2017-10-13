@@ -34,6 +34,17 @@
                 <div class="col-md-2"></div>
 
             </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <span>ROLL: {{atti.roll}}</span>
+                </div>
+                <div class="col-md-4">
+                    <span>PITCH: {{atti.pitch}}</span>
+                </div>
+                <div class="col-md-4">
+                    <span>YAW: {{atti.yaw}}</span>
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -52,6 +63,9 @@
       },
       status() {
         return this.$store.getters.status;
+      },
+      atti(){
+        return this.$store.getters.atti;
       }
     }
   }

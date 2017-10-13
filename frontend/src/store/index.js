@@ -18,6 +18,9 @@ const mutations = {
       case 'status':
         state.status = message.payload;
         break;
+      case 'atti_r':
+        state.atti_r = message.payload;
+        break;
       default:
         console.error('Unknown message received', message);
         break;
@@ -27,7 +30,8 @@ const mutations = {
 
 const getters = {
   connected: (state) => state.connected,
-  status: (state) => state.status
+  status: (state) => state.status,
+  atti: (state) => state.atti_r
 };
 
 
@@ -36,7 +40,8 @@ export const store = new Vuex.Store({
   state: {
     connected: false,
     logs: [],
-    status:{}
+    status:{},
+    atti_r: {roll: 0, pitch: 0, yaw: 0}
   },
   mutations,
   getters
