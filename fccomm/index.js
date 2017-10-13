@@ -3,13 +3,13 @@ const SerialPort = require('serialport');
 const observe = require('observe');
 const EventEmitter = require('events');
 
-const mavlink = require('../apm/mavlink');
+const mavlink = require('../apm/mavlink.js');
 
 const modes = {
   'WAITING': {next: 'INIT', action: setNext},
   'INIT': {next: 'ARMING', action: init},
   'ARMING': {next: 'TAKE_OFF', action: arming},
-  'TAKE_OFF': {next: 'MISSION', action: takeOff},
+  'TAKE_OFF': {next: 'MISSION', action: takeoff},
   'MISSION': {next: 'LAND', action: mission},
   'LAND': {next: null, action: land}
 };
@@ -31,6 +31,12 @@ const params = {
     roll: 0,
     pitch: 0,
     yaw: 0,
+  },
+  motors: {
+    motor1: 1000,
+    motor2: 1000,
+    motor3: 1000,
+    motor4: 1000,
   }
 };
 
@@ -43,10 +49,16 @@ state.on('change', (change) => {
     if(change.property[1] ==='current_mode'){
       //Mode changed
       const mode = state.subject.status.current_mode;
+      console.log('MODE CHANGED', mode)
       modes[mode].action(setNext);
     }
     //Send new status report
-    console.log('STATUS CHANGE')
+  }else if(change.property[0] === 'atti_r'){
+    process.send({type: 'atti_r', payload: {
+      roll:state.subject.atti_r.roll,
+      pitch:state.subject.atti_r.pitch,
+      yaw:state.subject.atti_r.yaw,
+    }})
   }
 });
 
@@ -66,22 +78,30 @@ function setNext(err){
 
 function init (next) {
   console.log('INIT');
+  requestDataStreams();
+  QE.once('start', ()=>{
+    next();
+  });
 
-  next();
 };
 
 function arming (next) {
   console.log('ARMING');
-  QE.on('armed', () => {
+  armMotors();
+  QE.once('armed', () => {
     state.set('status.armed', true);
     process.send({type: 'info', payload: 'Motors armed'})
     next()
   });
 };
 
-function takeOff(next){
+function takeoff(next){
   console.log('TAKEOFF');
-  next();
+  takeOff();
+  QE.once('takeoff_done', ()=>{
+    next();
+  });
+
 }
 
 function mission(next){
@@ -130,30 +150,51 @@ connection.on('data', function (data) {
 // Attach an event handler for any valid MAVLink message
 mavlinkParser.on('message', (message) => {
   //console.log('Got a message of any type!');
-  //console.log(message);
+  // console.log('===', message);
 });
 
 
 mavlinkParser.on('HEARTBEAT', (message) => {
-  //console.log('Got a heartbeat message!');
+  // console.log('Got a heartbeat message!');
   //console.log(message); // message is a HEARTBEAT message
+  const custom_mode = message.custom_mode; //0=STABILIZE, 2=ALT HOLD, 5=LOITER, 20=GUIDED_NOGPS
+  const current_state = state.subject.status.current_mode;
+  if(current_state === 'WAITING'){
+    setNext();
+  }
 });
 
 mavlinkParser.on('STATUSTEXT', (message) => {
+  process.send({type: 'info', payload: message.text});
+});
 
+mavlinkParser.on('LOG_DATA', (message) => {
+ console.log('LOGDATA', message)
+});
+
+mavlinkParser.on('ATTITUDE', (message) => {
+  state.set('atti_r.roll', message.roll);
+  state.set('atti_r.pitch', message.pitch);
+  state.set('atti_r.yaw', message.yaw);
 });
 
 mavlinkParser.on('SYS_STATUS', (message) => {
   state.set('status.battery_voltage', message.voltage_battery)
 });
 
+mavlinkParser.on('SERVO_OUTPUT_RAW', (message) => {
+  state.set('motors.motor1', message.servo1_raw);
+  state.set('motors.motor2', message.servo2_raw);
+  state.set('motors.motor3', message.servo3_raw);
+  state.set('motors.motor4', message.servo4_raw);
+});
+
 
 mavlinkParser.on('RC_CHANNELS_RAW', (message) => {
-  const ch8 = message.chan8_raw;
-  console.log('CH8', ch8); // message is a HEARTBEAT message
-  if (ch8 > 1600) {
-    //QE.emit('start')
-  } else if (ch8 < 1400) {
+  const ch5 = message.chan5_raw;
+  if (ch5 > 1800) {
+    QE.emit('start')
+  } else if (ch5 < 1800) {
     //QE.emit('stop')
   }
 });
@@ -171,29 +212,19 @@ mavlinkParser.on('COMMAND_ACK', (message) => {
     case 22: //TAKEOFF
       switch (message.result) {
         case 0: //Command success
-          //TODO
+          QE.emit('takeoff_done')
           break;
       }
       break;
   }
 });
 
-QE.on('start', () => {
-  process.send({type: 'info', payload: 'Arming motors'});
-  armMotors(1); //Do arm
-});
 
-QE.on('stop', () => {
-  process.send({type: 'info', payload: 'Disarming motors'});
-  armMotors(0); //Do disarm
-});
-
-
-setTimeout(function () {
+function requestDataStreams(){
   let request = new mavlink.messages.request_data_stream(1, 1, mavlink.MAV_DATA_STREAM_ALL, 1, 1);
   let p = new Buffer(request.pack(mavlinkParser));
   connection.write(p);
-}, 10000);
+}
 
 const armMotors = (action) => {
   let request = new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1, 1);
@@ -202,7 +233,7 @@ const armMotors = (action) => {
 };
 
 const takeOff = () => {
-  let request = new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF, 1, 1); //TODO
+  let request = new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF, 1, 0,0,0,0,0,0,1); //TODO
   let p = new Buffer(request.pack(mavlinkParser));
   connection.write(p);
 }
