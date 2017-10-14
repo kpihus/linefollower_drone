@@ -14,12 +14,15 @@ const mutations = {
   },
   SOCKET_ONMESSAGE: (state, message) => {
     message = JSON.parse(message.data);
-    switch (message.type){
+    switch (message.type) {
       case 'status':
         state.status = message.payload;
         break;
       case 'atti_r':
         state.atti_r = message.payload;
+        break;
+      case 'motors':
+        state.motors = message.payload;
         break;
       default:
         console.error('Unknown message received', message);
@@ -31,17 +34,18 @@ const mutations = {
 const getters = {
   connected: (state) => state.connected,
   status: (state) => state.status,
-  atti: (state) => state.atti_r
+  atti: (state) => state.atti_r,
+  motors: (state) => state.motors
 };
-
 
 
 export const store = new Vuex.Store({
   state: {
     connected: false,
     logs: [],
-    status:{},
-    atti_r: {roll: 0, pitch: 0, yaw: 0}
+    status: {},
+    atti_r: {roll: 0, pitch: 0, yaw: 0},
+    motors: {motor1: 0, motor2: 0, motor3: 0, motor4: 0}
   },
   mutations,
   getters

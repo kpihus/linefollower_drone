@@ -45,6 +45,20 @@
                     <span>YAW: {{atti.yaw}}</span>
                 </div>
             </div>
+            <div class="row">
+                <div class="col-md-3">
+                    <span>MOTOR1: {{motors.motor1}}</span>
+                </div>
+                <div class="col-md-3">
+                    <span>MOTOR2: {{motors.motor2}}</span>
+                </div>
+                <div class="col-md-3">
+                    <span>MOTOR3: {{motors.motor3}}</span>
+                </div>
+                <div class="col-md-3">
+                    <span>MOTOR4: {{motors.motor4}}</span>
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -66,6 +80,9 @@
       },
       atti(){
         return this.$store.getters.atti;
+      },
+      motors(){
+        return this.$store.getters.motors;
       }
     }
   }

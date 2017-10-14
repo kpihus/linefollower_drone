@@ -84,7 +84,13 @@ fccomm.on('message', function (msg) {
       break;
     case 'atti_r':
       sendWsm({
-        type:'atti_r',
+        type: 'atti_r',
+        payload: msg.payload
+      });
+      break;
+    case 'motors':
+      sendWsm({
+        type: 'motors',
         payload: msg.payload
       });
       break;

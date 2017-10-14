@@ -9,7 +9,8 @@ const modes = {
   'WAITING': {next: 'INIT', action: setNext},
   'INIT': {next: 'ARMING', action: init},
   'ARMING': {next: 'TAKE_OFF', action: arming},
-  'TAKE_OFF': {next: 'MISSION', action: takeoff},
+  'TAKE_OFF': {next: 'SET_GUIDED', action: setguided},
+  'SET_GUIDED': {next: 'MISSION', action: takeoff},
   'MISSION': {next: 'LAND', action: mission},
   'LAND': {next: null, action: land}
 };
@@ -59,6 +60,13 @@ state.on('change', (change) => {
       pitch:state.subject.atti_r.pitch,
       yaw:state.subject.atti_r.yaw,
     }})
+  }else if(change.property[0] === 'motors'){
+    process.send({type: 'motors', payload: {
+      motor1: state.subject.motors.motor1,
+      motor2: state.subject.motors.motor2,
+      motor3: state.subject.motors.motor3,
+      motor4: state.subject.motors.motor4
+    }})
   }
 });
 
@@ -97,11 +105,19 @@ function arming (next) {
 
 function takeoff(next){
   console.log('TAKEOFF');
-  takeOff();
+  setTimeout(()=>{
+    takeOff();
+  }, 4000);
+
   QE.once('takeoff_done', ()=>{
     next();
   });
 
+}
+
+function setguided(next){
+  console.log('GUIDED NOGPS MODE');
+  next();
 }
 
 function mission(next){
@@ -219,6 +235,10 @@ mavlinkParser.on('COMMAND_ACK', (message) => {
   }
 });
 
+function sendRequest(request){
+  let p = new Buffer(request.pack(mavlinkParser));
+  connection.write(p);
+}
 
 function requestDataStreams(){
   let request = new mavlink.messages.request_data_stream(1, 1, mavlink.MAV_DATA_STREAM_ALL, 1, 1);
@@ -226,15 +246,30 @@ function requestDataStreams(){
   connection.write(p);
 }
 
-const armMotors = (action) => {
-  let request = new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1, 1);
-  let p = new Buffer(request.pack(mavlinkParser));
-  connection.write(p);
+function armMotors(action){
+  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1, 1));
+
 };
 
-const takeOff = () => {
-  let request = new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF, 1, 0,0,0,0,0,0,1); //TODO
-  let p = new Buffer(request.pack(mavlinkParser));
-  connection.write(p);
+function takeOff() {
+  const altitude = 1.5;
+  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF,  0, // confirmation
+  0, // param1
+  0, // param2
+  0, // param3
+  0, // param4
+  0, // param5
+  0, // param6
+  altitude));
 }
 
+const setMode = () => {
+  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_DO_SET_MODE,  0, // confirmation
+    0, // param1
+    0, // param2
+    0, // param3
+    0, // param4
+    0, // param5
+    0, // param6
+    altitude));
+}
