@@ -158,7 +158,9 @@ const QE = new QEmitter();
 mavlinkParser = new MAVLink();
 
 
-
+/**
+ * Parse incoming data
+ */
 connection.on('data', function (data) {
   mavlinkParser.parseBuffer(data);
 });
