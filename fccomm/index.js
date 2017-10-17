@@ -133,7 +133,7 @@ function land(next){
 /* END OF STATE ACTIONS */
 
 
-var connection = new SerialPort('/dev/ttyUSB5', {
+const connection = new SerialPort('/dev/ttyUSB5', {
   baudRate: 57600
 });
 
