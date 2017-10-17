@@ -228,7 +228,7 @@ mavlinkParser.on('COMMAND_ACK', (message) => {
     case 22: //TAKEOFF
       switch (message.result) {
         case 0: //Command success
-          QE.emit('takeoff_done')
+          QE.emit('takeoff_done');
           break;
       }
       break;
