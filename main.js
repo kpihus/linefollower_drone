@@ -72,6 +72,7 @@ fccomm.on('message', function (msg) {
   // console.log('CHILD MESSAGE', msg);
   switch (msg.type) {
     case 'info':
+      sendWsm(msg);
       log.info({info: msg.payload});
       break;
 
