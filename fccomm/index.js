@@ -283,16 +283,6 @@ function armMotors(action) {
 
 function takeOff() {
   console.log('Set mode takeoff')
-  const altitude = 1.5;
-  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF,
-    0, // confirmation
-    0, // param1
-    0, // param2
-    0, // param3
-    0, // param4
-    0, // param5
-    0, // param6
-    altitude));
   const altitude = 2;
   sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF,  0, // confirmation
   0, // param1
@@ -320,12 +310,5 @@ function land() {
 
 const setMode = () => {
 
-  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_DO_SET_MODE,  0, // confirmation
-    20, // param1
-    0, // param2
-    0, // param3
-    0, // param4
-    0, // param5
-    0, // param6
-    0));
+  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_DO_SET_MODE,  0, 20));
 }

@@ -68,12 +68,14 @@ server.listen(3000, () => {
   log.info('App is listeing on port 3000')
 });
 
+
+
 const fccomm = fork('./fccomm');
 fccomm.on('message', function (msg) {
   // console.log('CHILD MESSAGE', msg);
   switch (msg.type) {
     case 'info':
-      say.speak(msg.payload);
+      speak_messages.push(msg.payload);
       sendWsm(msg);
       log.info({info: msg.payload});
 
