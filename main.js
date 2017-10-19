@@ -74,6 +74,7 @@ fccomm.on('message', function (msg) {
   switch (msg.type) {
     case 'info':
       say.speak(msg.payload);
+      sendWsm(msg);
       log.info({info: msg.payload});
 
       break;

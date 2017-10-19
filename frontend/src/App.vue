@@ -35,14 +35,17 @@
 
             </div>
             <div class="row">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <span>ROLL: {{atti.roll}}</span>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <span>PITCH: {{atti.pitch}}</span>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <span>YAW: {{atti.yaw}}</span>
+                </div>
+                <div class="col-md-3">
+                    <span>ALT: {{atti.altitude}}</span>
                 </div>
             </div>
             <div class="row">
@@ -57,6 +60,16 @@
                 </div>
                 <div class="col-md-3">
                     <span>MOTOR4: {{motors.motor4}}</span>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    LOG
+                    <ul>
+                        <li v-for="entry in log">
+                            {{entry}}
+                        </li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -83,7 +96,11 @@
       },
       motors(){
         return this.$store.getters.motors;
+      },
+      log(){
+        return this.$store.getters.log;
       }
+
     }
   }
 </script>

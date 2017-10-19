@@ -5,14 +5,18 @@ const EventEmitter = require('events');
 
 const mavlink = require('../apm/mavlink.js');
 
+function logger(message){
+  process.send({type: 'info', payload: message})
+}
+
 const modes = {
   'WAITING': {next: 'INIT', action: setNext},
   'INIT': {next: 'ARMING', action: init},
   'ARMING': {next: 'TAKE_OFF', action: arming},
-  'TAKE_OFF': {next: 'SET_GUIDED', action: setguided},
-  'SET_GUIDED': {next: 'MISSION', action: takeoff},
+  'TAKE_OFF': {next: 'SET_GUIDED', action: doTakeoff},
+  'SET_GUIDED': {next: 'MISSION', action: setGuided},
   'MISSION': {next: 'LAND', action: mission},
-  'LAND': {next: null, action: land}
+  'LAND': {next: null, action: doLand}
 };
 
 const params = {
@@ -32,6 +36,7 @@ const params = {
     roll: 0,
     pitch: 0,
     yaw: 0,
+    altitude: 0,
   },
   motors: {
     motor1: 1000,
@@ -46,76 +51,80 @@ const state = observe(params);
 state.on('change', (change) => {
   if (change.property[0] === 'atti_c') {
     //Attitude new values to FC
-  }else if (change.property[0] === 'status'){
-    if(change.property[1] ==='current_mode'){
+  } else if (change.property[0] === 'status') {
+    if (change.property[1] === 'current_mode') {
       //Mode changed
       const mode = state.subject.status.current_mode;
-      console.log('MODE CHANGED', mode)
+      logger(`Mode changed to ${mode}`)
       modes[mode].action(setNext);
     }
     //Send new status report
-  }else if(change.property[0] === 'atti_r'){
-    process.send({type: 'atti_r', payload: {
-      roll:state.subject.atti_r.roll,
-      pitch:state.subject.atti_r.pitch,
-      yaw:state.subject.atti_r.yaw,
-    }})
-  }else if(change.property[0] === 'motors'){
-    process.send({type: 'motors', payload: {
-      motor1: state.subject.motors.motor1,
-      motor2: state.subject.motors.motor2,
-      motor3: state.subject.motors.motor3,
-      motor4: state.subject.motors.motor4
-    }})
+  } else if (change.property[0] === 'atti_r') {
+    process.send({type: 'atti_r', payload: state.subject.atti_r})
+    if(state.subject.atti_r.altitude > 1.3){
+      QE.emit('takeoff_done');
+    }
+  } else if (change.property[0] === 'motors') {
+    process.send({
+      type: 'motors', payload: {
+        motor1: state.subject.motors.motor1,
+        motor2: state.subject.motors.motor2,
+        motor3: state.subject.motors.motor3,
+        motor4: state.subject.motors.motor4
+      }
+    })
   }
 });
 
 /*STATE ACTIONS */
 
-function setNext(err){
-  if(err){
+function setNext(err) {
+  if (err) {
     console.error(err)
   }
   const next = modes[state.subject.status.current_mode].next;
-  if(!next){
+  if (!next) {
     process.exit(0)
   }
   state.set('status.current_mode', next);
 }
 
 
-function init (next) {
+function init(next) {
   console.log('INIT');
   requestDataStreams();
-  QE.once('start', ()=>{
+  QE.once('start', () => {
     next();
   });
 
 };
 
-function arming (next) {
+function arming(next) {
+  logger('Start arming motrs');
   console.log('ARMING');
   armMotors();
   QE.once('armed', () => {
     state.set('status.armed', true);
-    process.send({type: 'info', payload: 'Motors armed'})
+    logger('Motors armed');
     next()
   });
 };
 
-function takeoff(next){
-  console.log('TAKEOFF');
-  setTimeout(()=>{
+function doTakeoff(next) {
+  logger('Starting takeoff')
+  setTimeout(() => {
     takeOff();
-  }, 4000);
+  }, 2000);
 
-  QE.once('takeoff_done', ()=>{
+  QE.once('takeoff_done', () => {
+    logger('Takeoff done');
     next();
   });
 
 }
 
-function setguided(next){
+
+function setGuided(next){
   setTimeout(() => {
     setMode();
 
@@ -126,13 +135,17 @@ function setguided(next){
 
 }
 
-function mission(next){
+function mission(next) {
   console.log('MISSION');
-  next();
+  setTimeout(() => {
+    next();
+  }, 20000)
+
 }
 
-function land(next){
-  console.log('LAND');
+function doLand(next) {
+  logger('Landing quad');
+  land();
   next();
 }
 
@@ -157,14 +170,17 @@ process.on('message', msg => {
 });
 
 
-class QEmitter extends EventEmitter {}
+class QEmitter extends EventEmitter {
+}
 
 const QE = new QEmitter();
 
 mavlinkParser = new MAVLink();
 
 
-
+/**
+ * Parse incoming data
+ */
 connection.on('data', function (data) {
   mavlinkParser.parseBuffer(data);
 });
@@ -172,7 +188,7 @@ connection.on('data', function (data) {
 // Attach an event handler for any valid MAVLink message
 mavlinkParser.on('message', (message) => {
   //console.log('Got a message of any type!');
-  // console.log('===', message);
+  //console.log('===', message);
 });
 
 
@@ -181,23 +197,30 @@ mavlinkParser.on('HEARTBEAT', (message) => {
   //console.log(message); // message is a HEARTBEAT message
   const custom_mode = message.custom_mode; //0=STABILIZE, 2=ALT HOLD, 5=LOITER, 20=GUIDED_NOGPS
   const current_state = state.subject.status.current_mode;
-  if(current_state === 'WAITING'){
+  if (current_state === 'WAITING') {
     setNext();
   }
 });
 
 mavlinkParser.on('STATUSTEXT', (message) => {
-  process.send({type: 'info', payload: message.text});
+  process.send({type: 'info', payload: message.text.replace(/\0/g, '')});
 });
 
 mavlinkParser.on('LOG_DATA', (message) => {
- console.log('LOGDATA', message)
+  logger(message)
+});
+mavlinkParser.on('SET_MODE', (message) => {
+  console.log('SETMODE', message)
 });
 
 mavlinkParser.on('ATTITUDE', (message) => {
   state.set('atti_r.roll', message.roll);
   state.set('atti_r.pitch', message.pitch);
   state.set('atti_r.yaw', message.yaw);
+});
+
+mavlinkParser.on('RANGEFINDER', (message) => {
+  state.set('atti_r.altitude', message.distance);
 });
 
 mavlinkParser.on('SYS_STATUS', (message) => {
@@ -222,7 +245,7 @@ mavlinkParser.on('RC_CHANNELS_RAW', (message) => {
 });
 //
 mavlinkParser.on('COMMAND_ACK', (message) => {
-  console.log('COMMAND', message.command, 'RESULT', message.result); // message is a HEARTBEAT message
+  logger(`COMMAND, ${message.command}, RESULT ${message.result}`)
   switch (message.command) {
     case 400: //ARM DISARM
       switch (message.result) {
@@ -234,7 +257,6 @@ mavlinkParser.on('COMMAND_ACK', (message) => {
     case 22: //TAKEOFF
       switch (message.result) {
         case 0: //Command success
-          QE.emit('takeoff_done');
           break;
       }
       break;
@@ -243,23 +265,34 @@ mavlinkParser.on('COMMAND_ACK', (message) => {
   }
 });
 
-function sendRequest(request){
+function sendRequest(request) {
   let p = new Buffer(request.pack(mavlinkParser));
   connection.write(p);
 }
 
-function requestDataStreams(){
+function requestDataStreams() {
   let request = new mavlink.messages.request_data_stream(1, 1, mavlink.MAV_DATA_STREAM_ALL, 1, 1);
   let p = new Buffer(request.pack(mavlinkParser));
   connection.write(p);
 }
 
-function armMotors(action){
+function armMotors(action) {
   sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1, 1));
 
 };
 
 function takeOff() {
+  console.log('Set mode takeoff')
+  const altitude = 1.5;
+  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF,
+    0, // confirmation
+    0, // param1
+    0, // param2
+    0, // param3
+    0, // param4
+    0, // param5
+    0, // param6
+    altitude));
   const altitude = 2;
   sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF,  0, // confirmation
   0, // param1
@@ -271,7 +304,22 @@ function takeOff() {
   altitude));
 }
 
+function land() {
+  console.log('Set mode land');
+  const altitude = 0;
+  sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_LAND,
+    0, // confirmation
+    0, // param1
+    0, // param2
+    0, // param3
+    0, // param4
+    0, // param5
+    0, // param6
+    altitude));
+}
+
 const setMode = () => {
+
   sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_DO_SET_MODE,  0, // confirmation
     20, // param1
     0, // param2

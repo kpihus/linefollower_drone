@@ -15,6 +15,9 @@ const mutations = {
   SOCKET_ONMESSAGE: (state, message) => {
     message = JSON.parse(message.data);
     switch (message.type) {
+      case 'info':
+        state.logs.push(message.payload);
+        console.log(state.logs);
       case 'status':
         state.status = message.payload;
         break;
@@ -35,7 +38,8 @@ const getters = {
   connected: (state) => state.connected,
   status: (state) => state.status,
   atti: (state) => state.atti_r,
-  motors: (state) => state.motors
+  motors: (state) => state.motors,
+  log: (state) => state.logs
 };
 
 
@@ -44,7 +48,7 @@ export const store = new Vuex.Store({
     connected: false,
     logs: [],
     status: {},
-    atti_r: {roll: 0, pitch: 0, yaw: 0},
+    atti_r: {roll: 0, pitch: 0, yaw: 0, altitude:0},
     motors: {motor1: 0, motor2: 0, motor3: 0, motor4: 0}
   },
   mutations,
