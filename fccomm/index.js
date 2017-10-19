@@ -116,8 +116,14 @@ function takeoff(next){
 }
 
 function setguided(next){
-  console.log('GUIDED NOGPS MODE');
-  next();
+  setTimeout(() => {
+    setMode();
+
+    console.log('GUIDED NOGPS MODE');
+    next();
+  }, 2000)
+
+
 }
 
 function mission(next){
@@ -133,7 +139,7 @@ function land(next){
 /* END OF STATE ACTIONS */
 
 
-const connection = new SerialPort('/dev/ttyUSB5', {
+const connection = new SerialPort('/dev/ttyUSB0', {
   baudRate: 57600
 });
 
@@ -232,6 +238,8 @@ mavlinkParser.on('COMMAND_ACK', (message) => {
           break;
       }
       break;
+
+
   }
 });
 
@@ -252,7 +260,7 @@ function armMotors(action){
 };
 
 function takeOff() {
-  const altitude = 1.5;
+  const altitude = 2;
   sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_NAV_TAKEOFF,  0, // confirmation
   0, // param1
   0, // param2
@@ -265,11 +273,11 @@ function takeOff() {
 
 const setMode = () => {
   sendRequest(new mavlink.messages.command_long(1, 1, mavlink.MAV_CMD_DO_SET_MODE,  0, // confirmation
-    0, // param1
+    20, // param1
     0, // param2
     0, // param3
     0, // param4
     0, // param5
     0, // param6
-    altitude));
+    0));
 }

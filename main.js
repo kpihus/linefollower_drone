@@ -1,5 +1,6 @@
 const {fork} = require('child_process');
 const bunyan = require('bunyan');
+const say = require('say');
 const path = require('path');
 const WebSocket = require('ws');
 const WSServer = WebSocket.Server;
@@ -72,7 +73,9 @@ fccomm.on('message', function (msg) {
   // console.log('CHILD MESSAGE', msg);
   switch (msg.type) {
     case 'info':
+      say.speak(msg.payload);
       log.info({info: msg.payload});
+
       break;
 
     case 'status':
