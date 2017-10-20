@@ -5,6 +5,8 @@ const EventEmitter = require('events');
 
 const mavlink = require('../apm/mavlink.js');
 
+const PORT = '/dev/ttyUSB5'
+
 function logger(message){
   process.send({type: 'info', payload: message})
 }
@@ -152,9 +154,13 @@ function doLand(next) {
 /* END OF STATE ACTIONS */
 
 
-const connection = new SerialPort('/dev/ttyUSB0', {
+const connection = new SerialPort(PORT, {
   baudRate: 57600
 });
+
+connection.on('open', ()=>{
+  process.send({type: 'info', payload: 'Serial communication opened'})
+})
 
 //Handle parent messages
 process.on('message', msg => {

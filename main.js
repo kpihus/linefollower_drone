@@ -7,6 +7,9 @@ const WSServer = WebSocket.Server;
 const express = require('express');
 const app = express();
 const server = require('http').createServer();
+const Speak = require('./speak');
+
+const speaker = new Speak();
 
 const log = bunyan.createLogger({
   name: 'Quad',
@@ -75,7 +78,7 @@ fccomm.on('message', function (msg) {
   // console.log('CHILD MESSAGE', msg);
   switch (msg.type) {
     case 'info':
-      speak_messages.push(msg.payload);
+      speaker.setMessage(msg.payload);
       sendWsm(msg);
       log.info({info: msg.payload});
 
