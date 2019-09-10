@@ -16,7 +16,12 @@ class ShapeDetector:
             (x, y, w, h) = cv2.boundingRect(approx)
             ar = w / float(h)
 
-            shape = "square" if ar >= 0.95 and ar <= 1.05 else "rectangle"
+            if ar >= 0.05 and ar <= 0.9:
+                shape = "rectangle"
+            elif ar > 1.1:
+                shape = "rectangle"
+            else:
+                print(f'height {h} width {w} ratio {ar}.')
         elif len(approx) == 5:
             shape = "pentagon"
 

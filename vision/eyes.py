@@ -1,12 +1,29 @@
+import sys
+# parser: rtph264depay
+# _parserName = "h264parse";
+# _swDecoderName = "avdec_h264";
+# for raw video https://stackoverflow.com/questions/39492658/working-example-of-rtpvrawpay-in-gstreamer
+# gstreamer tutorial http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/
+# capture latest frame https://stackoverflow.com/questions/43665208/how-to-get-the-latest-frame-from-capture-device-camera-in-opencv-python#targetText=Your%20program%20should%20be%20able,last%20frame%20in%20the%20queue.&targetText=As%20per%20OpenCV%20reference%2C%20vidcap.read()%20returns%20a%20bool.
+# appsink properties https://gstreamer.freedesktop.org/documentation/app/appsink.html?gi-language=c#properties
+
+
+
 import cv2
 import imutils
 import time
 #  gst-launch-1.0 -v udpsrc port=5000 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! decodebin ! videoconvert ! autovideosink
+# gst-launch-1.0 -v  udpsrc port=5600 ! "application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! autovideosink
 from vision.helpers import Helpers
 from vision.shapedetector import ShapeDetector
 from shape import Line
 
-cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! decodebin ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
+# cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
+# cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, encoding-name=(string)H264" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
+cap = cv2.VideoCapture('udpsrc port=5600 caps="application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink drop=true', cv2.CAP_GSTREAMER)
+
+
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 0)
 # cap = cv2.VideoCapture(
 #     'udpsrc port=5600 caps = "video/x-raw, format="I420", width',
 #     cv2.CAP_GSTREAMER)
@@ -16,7 +33,9 @@ if not cap.isOpened():
 
 while True:
     start_time = time.time()
-    ret, frame = cap.read()
+    # frame = cv2.imread('testpic.png')
+    cap.grab()
+    ret, frame = cap.retrieve()
     if not ret:
         print('frame empty')
         break
@@ -50,6 +69,7 @@ while True:
 
     for c in cnts[0]:
         shape = sd.detect(c)
+        cv2.drawContours(frame, [c], -1, (255, 0, 0), 1)
         if shape == "rectangle":
             cv2.drawContours(frame, [c], -1, (0, 0, 255), 2)
         else:
@@ -61,9 +81,8 @@ while True:
         cY = int(M["m01"] / M["m00"])
         # print((i, cX, cY))
 
-
-        cv2.circle(frame, (cX, cY), 7, (255, 0, 0), -1)
-        cv2.putText(frame, shape, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+        # cv2.circle(frame, (cX, cY), 7, (255, 0, 0), -1) # circle in center of shape
+        # cv2.putText(frame, shape, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2) # shape name
         i = i + 1
 
         [vx, vy, x, y] = cv2.fitLine(c, cv2.DIST_L2, 0, 0.01, 0.01)
@@ -73,72 +92,26 @@ while True:
         point1 = (cols - 1, righty)
         point2 = (0, lefty)
 
+        # cv2.line(img, point1, point2, (0, 255, 0), 2)
         newline = Line((cX, cY), point1, point2, img_center)
 
         lines.append(newline)
+        # plt.plot([cols - 1, righty], [0, lefty], color='k', linestyle='-', linewidth=2)
+        # break
 
-    lines.sort(key=lambda l: l.angle)
-
-    bestline = Line((int(cols / 2), int(rows / 2)), (0, int(rows / 2)), (cols, int(rows / 2)), img_center) # Initial best line is worst ever, 90 degrees with flight path
-
-    # find all good lines (closest to Y axis)
-    goodlines = []
     for l in lines:
-        if l.angle < abs(bestline.angle):
-            goodlines.append(l)
-
-    if len(goodlines) < 3:
-        continue
-
-    del goodlines[0]
-    del goodlines[-1]
-
-
-    bestAngle = h.averageLineDeg(goodlines)
-
-    centerline = Line((int(cols / 2), int(rows / 2)), (int(cols / 2), 0), (int(cols / 2), rows), img_center)
-
-    closest_to_c = h.closest_point_to((int(cols / 2), int(rows / 2)), goodlines)
-
-    if len(goodlines) < 3:
-        continue
-
-    goodlines.sort(key=lambda l: l.centerdistance)
-    cv2.circle(frame, goodlines[0].guidepoint, 7, (0, 0, 255), -1)  # Most center point
-    cv2.circle(frame, goodlines[1].guidepoint, 7, (0, 255, 0), -1)  # ... one above it
-    cv2.circle(frame, goodlines[2].guidepoint, 7, (0, 255, 0), -1)  # ... and one below
-
-    flight_line = Line(goodlines[0].guidepoint, goodlines[2].guidepoint, goodlines[1].guidepoint, img_center)
-
-    cross_line = flight_line.plot_point(img_center, int(flight_line.angle) + 90, 250)
-    cv2.circle(frame, cross_line[1], 4, (255, 0, 255), -1)  # cross line endpoint
-
-
-    cv2.line(frame, flight_line.p1, flight_line.p2, (0, 255, 0), 2) # Draw ideal flight line
-    cv2.line(frame, cross_line[0], cross_line[1], (0, 10, 0), 2) # Line 90deg to flitht line
-
-    cross_point = Line.line_intersection((flight_line.p1, flight_line.p2), (cross_line[0], cross_line[1]))
-    cv2.circle(frame, cross_point, 4, (255, 0, 255), -1)  # cross line endpoint
-
-    drift_from_ideal = h.distance(cross_point, img_center)
-
-
-
-
-    cv2.putText(frame, "Yaw drift: "+str(flight_line.angle) + " deg", (100, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 100), 2)
-    cv2.putText(frame, "Roll drift: "+str(drift_from_ideal) + " px", (100, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 100), 2)
-
-
-
+        try:
+            cv2.line(frame, l.p1, l.p2, (0, 255, 0), 2)
+        except:
+            pass
 
     end_time = time.time() - start_time
     cv2.putText(frame, "Calc time: " + str(end_time) + " sec", (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 100), 2)
 
-    # Do some stuff here what takes lets say 1sec
     cv2.imshow('image', frame)
 
     if cv2.waitKey(1) & 0XFF == ord('q'):
         break
 
-cap.release()
+# cap.release()
 cv2.destroyAllWindows()
