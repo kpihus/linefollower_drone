@@ -16,9 +16,9 @@ class Line:
         xDiff = p2[0] - p1[0]
         yDiff = p2[1] - p1[1]
         angle = degrees(atan2(yDiff, xDiff)) + 90
-        if angle < 0:
-            return 180 + angle
-        return angle - 180
+        # if angle < 0:
+        #     return 180 + angle
+        return angle
 
     def calculatecenterdistance(self, center, guidepoint):
         h = Helpers()

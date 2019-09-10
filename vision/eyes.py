@@ -43,16 +43,13 @@ while True:
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
     thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY)[1]
-    cv2.imshow('threh', thresh)
-    # cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # cnts = cnts[0] if imutils.is_cv2() else cnts[1]
+    # cv2.imshow('threh', thresh)
+    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     sd = ShapeDetector()
     h = Helpers()
 
-
-    rows, cols = frame.shape[:2]
+    rows, cols = frame.shape[:2] # frame dimensions
 
     lines = []
     angle1 = []
@@ -61,28 +58,23 @@ while True:
 
     img_center = (int(cols / 2), int(rows / 2))
 
-    cv2.circle(frame, img_center, 7, (0, 0, 0), -1) # Image center point
-
-
-
+    cv2.circle(frame, img_center, 7, (100, 100, 100), -1) # Image center point
 
 
     for c in cnts[0]:
         shape = sd.detect(c)
         cv2.drawContours(frame, [c], -1, (255, 0, 0), 1)
         if shape == "rectangle":
-            cv2.drawContours(frame, [c], -1, (0, 0, 255), 2)
+            M = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
+            if M["m00"] == 0:
+                continue
+            # calculate center point of rectangle
+            cX = int(M["m10"] / M["m00"])
+            cY = int(M["m01"] / M["m00"])
+            cv2.circle(frame, (cX, cY), 7, (0, 0, 255), -1) # circle in center of shape
         else:
             continue
-        M = cv2.moments(c)  # https://www.youtube.com/watch?v=AAbUfZD_09s
-        if M["m00"] == 0:
-            continue
-        cX = int(M["m10"] / M["m00"])
-        cY = int(M["m01"] / M["m00"])
-        # print((i, cX, cY))
 
-        # cv2.circle(frame, (cX, cY), 7, (255, 0, 0), -1) # circle in center of shape
-        # cv2.putText(frame, shape, (cX, cY), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2) # shape name
         i = i + 1
 
         [vx, vy, x, y] = cv2.fitLine(c, cv2.DIST_L2, 0, 0.01, 0.01)
@@ -92,21 +84,85 @@ while True:
         point1 = (cols - 1, righty)
         point2 = (0, lefty)
 
-        # cv2.line(img, point1, point2, (0, 255, 0), 2)
         newline = Line((cX, cY), point1, point2, img_center)
+        # cv2.line(frame, newline.p1, newline.p2, (0, 255, 0), 2)  # Draw discovered line
+
 
         lines.append(newline)
-        # plt.plot([cols - 1, righty], [0, lefty], color='k', linestyle='-', linewidth=2)
         # break
 
-    for l in lines:
-        try:
-            cv2.line(frame, l.p1, l.p2, (0, 255, 0), 2)
-        except:
-            pass
+
+
+    if len(lines) < 2:
+        #not enough lines, nothing todo here
+        continue
+
+
+    ## CALCULATE YAW DRIFT
+    # get best based on two neared points ahead
+
+    # use only lines ahead of current position
+    lines_ahead = [l for l in lines if l.guidepoint[1] <= img_center[1]]
+
+    # sort lines by distance from frame center
+    lines_ahead.sort(key=lambda l: l.centerdistance)
+
+    # drown quidepoints of intresting lines
+    cv2.circle(frame, lines_ahead[0].guidepoint, 7, (0, 255, 0), -1)  # closest point to center of image
+    cv2.circle(frame, lines_ahead[1].guidepoint, 7, (255, 255, 0), -1)  # ... one above it
+    cv2.circle(frame, lines_ahead[2].guidepoint, 7, (255, 255, 0), -1)  # ... and one below
+
+
+    # draw best course line (line between next block and one after that, ahead of current pos)
+    best_course = Line(lines_ahead[0].guidepoint, lines_ahead[0].guidepoint, lines_ahead[1].guidepoint, img_center)
+    cv2.line(frame, best_course.p1, best_course.p2, (0, 255, 0), 2)  # Draw ideal flight line
+
+    # draw current heading just for reference
+    current_direction = Line(img_center, img_center, (int(cols/2), 0), img_center)
+    cv2.line(frame, current_direction.p1, current_direction.p2, (100, 200, 100), 2)
+    yaw_drift = round(best_course.angle, 0)
+
+    if yaw_drift < 260 and yaw_drift > 270:
+        # if best cours is to right, give negative angle from 0 deg
+        yaw_drift = yaw_drift - 360
+    ## END OF YAW
+
+    ## CALCULATE ROLL DRIFT
+    # based on two closed points to center
+
+    # sort by distance from image center
+    lines.sort(key=lambda l: l.centerdistance)
+
+    cv2.circle(frame, lines[0].guidepoint, 7, (0, 255, 255), -1)  # closest point to center of image
+    cv2.circle(frame, lines[1].guidepoint, 7, (0, 255, 255), -1)  # ... one above it
+
+    # fit line trough
+    roll_line = Line(lines[0].guidepoint, lines[0].guidepoint, lines[1].guidepoint, img_center)
+    cv2.line(frame, roll_line.p1, roll_line.p2, (0, 255, 255), 2)  # Draw it
+
+    # Line perpendicular to roll line
+    cross_line = roll_line.plot_point(img_center, int(roll_line.angle) + 90, 250)
+
+    # closest point on roll line to image center
+    cross_point = Line.line_intersection((roll_line.p1, roll_line.p2), (cross_line[0], cross_line[1]))
+    cv2.circle(frame, cross_point, 4, (255, 0, 255), -1)  # cross line endpoint
+
+    roll_drift = round(h.distance(cross_point, img_center), 0)
+
+    ## END OF ROLL DRIFT
+
+
+
+
+    cv2.putText(frame, "Roll drift: " + str(roll_drift) + " px", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                (255, 255, 100), 2)
+
+    cv2.putText(frame, "Yaw drift: " + str(yaw_drift) + " deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                (255, 255, 100), 2)
+
 
     end_time = time.time() - start_time
-    cv2.putText(frame, "Calc time: " + str(end_time) + " sec", (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 100), 2)
+    cv2.putText(frame, "Calc time: " + str(round(end_time, 4)) + " sec", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 100), 2)
 
     cv2.imshow('image', frame)
 

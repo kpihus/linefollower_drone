@@ -8,11 +8,9 @@ class ShapeDetector:
     def detect(self, c):
         shape = "unknown"
         peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.04 * peri, True) # orig: 0.04
+        approx = cv2.approxPolyDP(c, 0.045 * peri, True) # orig: 0.04
 
-        if len(approx) == 3:
-            shape = "triangle"
-        elif len(approx) == 4:
+        if len(approx) <= 5 or len(approx) >= 3:
             (x, y, w, h) = cv2.boundingRect(approx)
             ar = w / float(h)
 
@@ -21,11 +19,8 @@ class ShapeDetector:
             elif ar > 1.1:
                 shape = "rectangle"
             else:
-                print(f'height {h} width {w} ratio {ar}.')
-        elif len(approx) == 5:
-            shape = "pentagon"
-
+                print(f'RECTANGLE: height {h} width {w} ratio {ar}.')
         else:
-            shape = "circle"
+            print(f'SOME OTHER SHAPE {len(approx)}.')
 
         return shape
