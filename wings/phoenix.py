@@ -57,7 +57,7 @@ class Phoenix:
         roll = math.degrees(msg.roll)
         # print("Roll: " + str(round(roll, 2)) + " Pitch: " + str(round(pitch, 2)))
 
-    def arm_and_takeoff(self, target_altritude):
+    def arm_and_takeoff(self, target_altitude):
         vehicle = self.vehicle
 
 

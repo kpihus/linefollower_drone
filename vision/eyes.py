@@ -7,7 +7,7 @@
 # appsink properties https://gstreamer.freedesktop.org/documentation/app/appsink.html?gi-language=c#properties
 
 
-import cv2, threading
+import cv2, threading, queue
 
 from helpers.vision import Helpers
 from vision.shapedetector import ShapeDetector
@@ -34,7 +34,7 @@ class Eyes:
 
     def start_capture(self):
         print("Starting video capture")
-        self.cap = cv2.VideoCapture(self.capture_src, self.capture_src)
+        self.cap = cv2.VideoCapture(self.capture_src, self.capture_opts)
         if not self.cap.isOpened():
             print("VideoCapture not opened")
             exit(-1)
@@ -42,6 +42,7 @@ class Eyes:
         if cv2.waitKey(1) & 0XFF == ord('q'):
             self.cap.release()
             cv2.destroyAllWindows()
+        self.process()
 
 
 
@@ -143,7 +144,7 @@ class Eyes:
         self.yaw_drift = yaw_drift
 
     def draw_image(self, frame):
-        cv2.drawContours(frame, [self.conts[0]], -1, (255, 0, 0), 1)
+        # cv2.drawContours(frame, [self.conts[0]], -1, (255, 0, 0), 1)
         cv2.circle(frame, self.lines_ahead[0].guidepoint, 7, (0, 255, 0), -1)  # closest point to center of image
         cv2.circle(frame, self.lines_ahead[1].guidepoint, 7, (255, 255, 0), -1)  # ... one above it
         cv2.circle(frame, self.lines_ahead[2].guidepoint, 7, (255, 255, 0), -1)  # ... and one below
@@ -155,3 +156,7 @@ class Eyes:
                     (255, 255, 100), 2)
         cv2.imshow('image', frame)
 
+
+q = queue.LifoQueue()
+e = Eyes(q)
+e.start_capture()

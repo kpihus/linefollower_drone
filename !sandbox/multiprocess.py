@@ -1,11 +1,14 @@
 import multiprocessing
 
 def calc_square(number):
-    print('Square': , number * number)
+    print('Square'+str(number * number))
     result = number * number
-    print(result)
-def calc_quad():
-    print('Quad': , number * number * number * number)
+    while True:
+        print(result)
+
+def calc_quad(number):
+    while True:
+        print('Quad'+ str(number * number * number * number))
 if __name__ == "__main__":
     number = 7
     result = None

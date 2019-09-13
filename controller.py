@@ -4,13 +4,15 @@ from vision.eyes import Eyes
 import queue, threading
 from multiprocessing import Process
 
-q = queue.LifoQueue()
 
-b = Phoenix(q)
-e = Eyes(q)
+if __name__ == "__main__":
+    q = queue.LifoQueue()
 
-p1 = Process(target=b.connect())
-p2 = Process(target=e.start_capture())
+    b = Phoenix(q)
+    e = Eyes(q)
 
-p1.start()
-p2.start()
+    p1 = Process(target=b.connect)
+    p2 = Process(target=e.start_capture)
+
+    p1.start()
+    p2.start()
