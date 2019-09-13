@@ -107,17 +107,24 @@ class Phoenix:
 
             error = target_altitude - current_altitude
 
-            current_thrust = STABLE_THRUST + error * kp
+            if current_altitude < target_altitude + 0.3 or current_altitude > target_altitude - 0.3:
+                errors_sum = 0
+
+            current_thrust = STABLE_THRUST + error * kp + errors_sum * ki + (last_error - error) * kd
 
             print("Current thrust: %s" % current_thrust)
             self.set_attitude()
             last_error = error
             errors_sum += error
-            time.sleep(0.1)
+            time.sleep(0.01)
 
     def land(self):
         vehicle = self.vehicle
         vehicle.mode = VehicleMode("LAND")
+
+    def drive(self):
+        # todo read new attitude params from queue
+        self.set_attitude()
 
 
     def set_attitude(self, roll_angle=0.0, pitch_angle=0.0,
