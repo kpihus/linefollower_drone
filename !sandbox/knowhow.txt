@@ -1,0 +1,16 @@
+### VISION
+
+# parser: rtph264depay
+# _parserName = "h264parse";
+# _swDecoderName = "avdec_h264";
+# for raw video https://stackoverflow.com/questions/39492658/working-example-of-rtpvrawpay-in-gstreamer
+# gstreamer tutorial http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/
+# capture latest frame
+    https://stackoverflow.com/questions/43665208/how-to-get-the-latest-frame-from-capture-device-camera-in-opencv-python#targetText=Your%20program%20should%20be%20able,last%20frame%20in%20the%20queue.&targetText=As%20per%20OpenCV%20reference%2C%20vidcap.read()%20returns%20a%20bool.
+# appsink properties https://gstreamer.freedesktop.org/documentation/app/appsink.html?gi-language=c#properties
+#  gst-launch-1.0 -v udpsrc port=5000 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! decodebin ! videoconvert ! autovideosink
+# gst-launch-1.0 -v  udpsrc port=5600 ! "application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! autovideosink
+# cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
+# cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, encoding-name=(string)H264" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
+
+### EO VISON

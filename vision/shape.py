@@ -1,5 +1,5 @@
 from math import atan2, degrees
-from helpers import Helpers
+from helpers.vision import Helpers
 import math
 
 class Line:

@@ -1,4 +1,3 @@
-import sys
 # parser: rtph264depay
 # _parserName = "h264parse";
 # _swDecoderName = "avdec_h264";
@@ -8,166 +7,151 @@ import sys
 # appsink properties https://gstreamer.freedesktop.org/documentation/app/appsink.html?gi-language=c#properties
 
 
+import cv2, threading
 
-import cv2
-import imutils
-import time
-#  gst-launch-1.0 -v udpsrc port=5000 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! decodebin ! videoconvert ! autovideosink
-# gst-launch-1.0 -v  udpsrc port=5600 ! "application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! autovideosink
-from vision.helpers import Helpers
+from helpers.vision import Helpers
 from vision.shapedetector import ShapeDetector
-from shape import Line
-
-# cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
-# cap = cv2.VideoCapture('udpsrc port=5600 caps = "application/x-rtp, media=(string)video, encoding-name=(string)H264" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
-cap = cv2.VideoCapture('udpsrc port=5600 caps="application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink drop=true', cv2.CAP_GSTREAMER)
+from vision.shape import Line
 
 
-cap.set(cv2.CAP_PROP_BUFFERSIZE, 0)
-# cap = cv2.VideoCapture(
-#     'udpsrc port=5600 caps = "video/x-raw, format="I420", width',
-#     cv2.CAP_GSTREAMER)
-if not cap.isOpened():
-    print('VideoCapture not opened')
-    exit(-1)
+class Eyes:
+    def __init__(self, queue):
+        self.capture_src = 'udpsrc port=5600 caps="application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink drop=true'
+        self.capture_opts = cv2.CAP_GSTREAMER
+        self.cap = None
+        self.image_center = (0, 0)
+        self.sd = ShapeDetector()
+        self.h = Helpers()
+        self.image_cols = 0
+        self.image_rows = 0
+        self.conts = None
+        self.lines = None
+        self.lines_ahead = None
+        self.start_time = 0
+        self.roll_drift = 0
+        self.yaw_drift = 0
+        self.q = queue
 
-while True:
-    start_time = time.time()
-    # frame = cv2.imread('testpic.png')
-    cap.grab()
-    ret, frame = cap.retrieve()
-    if not ret:
-        print('frame empty')
-        break
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    def start_capture(self):
+        print("Starting video capture")
+        self.cap = cv2.VideoCapture(self.capture_src, self.capture_src)
+        if not self.cap.isOpened():
+            print("VideoCapture not opened")
+            exit(-1)
 
-    thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY)[1]
-    # cv2.imshow('threh', thresh)
-    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    sd = ShapeDetector()
-    h = Helpers()
-
-    rows, cols = frame.shape[:2] # frame dimensions
-
-    lines = []
-    angle1 = []
-    angle2 = []
-    i = 0
-
-    img_center = (int(cols / 2), int(rows / 2))
-
-    cv2.circle(frame, img_center, 7, (100, 100, 100), -1) # Image center point
+        if cv2.waitKey(1) & 0XFF == ord('q'):
+            self.cap.release()
+            cv2.destroyAllWindows()
 
 
-    for c in cnts[0]:
-        shape = sd.detect(c)
-        cv2.drawContours(frame, [c], -1, (255, 0, 0), 1)
-        if shape == "rectangle":
-            M = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
-            if M["m00"] == 0:
+
+    def process(self):
+        while True:
+            self.cap.grab()
+            ret, frame = self.cap.retrieve()
+            if not ret:
+                print('frame empty')
                 continue
-            # calculate center point of rectangle
-            cX = int(M["m10"] / M["m00"])
-            cY = int(M["m01"] / M["m00"])
-            cv2.circle(frame, (cX, cY), 7, (0, 0, 255), -1) # circle in center of shape
-        else:
-            continue
+            self.process_frame(frame)
 
-        i = i + 1
+    def process_image(self):
+        frame = cv2.imread('testpic_cross.png')
+        self.process_frame(frame)
+        while True:
+            # do nothing for a while
+            if cv2.waitKey(1) & 0XFF == ord('q'):
+                self.cap.release()
+                cv2.destroyAllWindows()
 
-        [vx, vy, x, y] = cv2.fitLine(c, cv2.DIST_L2, 0, 0.01, 0.01)
-        lefty = int((-x * vy / vx) + y)
-        righty = int(((cols - x) * vy / vx) + y)
+    def process_frame(self, frame):
 
-        point1 = (cols - 1, righty)
-        point2 = (0, lefty)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        newline = Line((cX, cY), point1, point2, img_center)
-        # cv2.line(frame, newline.p1, newline.p2, (0, 255, 0), 2)  # Draw discovered line
+        thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY)[1]
+        # cv2.imshow('threh', thresh)
+        self.conts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+        rows, cols = frame.shape[:2]  # frame dimensions
+        self.image_cols = cols
+        self.image_rows = rows
 
-        lines.append(newline)
-        # break
+        self.img_center = (int(cols / 2), int(rows / 2))
 
+        self.process_contours()
+        self.calculate_roll_drift()
+        self.calculate_yaw_drift()
+        self.draw_image(frame)
 
+    def process_contours(self):
+        sd = ShapeDetector()
+        lines = []
+        for c in self.conts[0]:
+            shape = sd.detect(c)
+            if shape == "rectangle":
+                moments = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
+                if moments["m00"] == 0:
+                    continue
+                # calculate center point of rectangle
+                cx = int(moments["m10"] / moments["m00"])
+                cy = int(moments["m01"] / moments["m00"])
+            else:
+                continue
 
-    if len(lines) < 2:
-        #not enough lines, nothing todo here
-        continue
+            [vx, vy, x, y] = cv2.fitLine(c, cv2.DIST_L2, 0, 0.01, 0.01)
+            lefty = int((-x * vy / vx) + y)
+            righty = int(((self.image_cols - x) * vy / vx) + y)
 
+            point1 = (self.image_cols - 1, righty)
+            point2 = (0, lefty)
 
-    ## CALCULATE YAW DRIFT
-    # get best based on two neared points ahead
+            newline = Line((cx, cy), point1, point2, self.img_center)
+            lines.append(newline)
+        self.lines = lines
 
-    # use only lines ahead of current position
-    lines_ahead = [l for l in lines if l.guidepoint[1] <= img_center[1]]
+    def calculate_roll_drift(self):
+        lines = self.lines
 
-    # sort lines by distance from frame center
-    lines_ahead.sort(key=lambda l: l.centerdistance)
+        if len(lines) < 2:
+            print("Not enough lines found, nothing to do here")
+            return
 
-    # drown quidepoints of intresting lines
-    cv2.circle(frame, lines_ahead[0].guidepoint, 7, (0, 255, 0), -1)  # closest point to center of image
-    cv2.circle(frame, lines_ahead[1].guidepoint, 7, (255, 255, 0), -1)  # ... one above it
-    cv2.circle(frame, lines_ahead[2].guidepoint, 7, (255, 255, 0), -1)  # ... and one below
+        lines.sort(key=lambda l: l.centerdistance)
+        roll_line = Line(lines[0].guidepoint, lines[0].guidepoint, lines[1].guidepoint, self.img_center)
+        cross_line = roll_line.plot_point(self.img_center, int(roll_line.angle) + 90, 250)
+        cross_point = Line.line_intersection((roll_line.p1, roll_line.p2), (cross_line[0], cross_line[1]))
+        self.roll_drift = round(self.h.distance(cross_point, self.img_center), 0)
 
+    def calculate_yaw_drift(self):
+        lines = self.lines
+        lines_ahead = [l for l in lines if l.guidepoint[1] <= self.img_center[1]]
+        self.lines_ahead = lines_ahead
 
-    # draw best course line (line between next block and one after that, ahead of current pos)
-    best_course = Line(lines_ahead[0].guidepoint, lines_ahead[0].guidepoint, lines_ahead[1].guidepoint, img_center)
-    cv2.line(frame, best_course.p1, best_course.p2, (0, 255, 0), 2)  # Draw ideal flight line
+        if len(lines_ahead) < 3:
+            print("No ahead lines found, nothing todo here ")
+            return
 
-    # draw current heading just for reference
-    current_direction = Line(img_center, img_center, (int(cols/2), 0), img_center)
-    cv2.line(frame, current_direction.p1, current_direction.p2, (100, 200, 100), 2)
-    yaw_drift = round(best_course.angle, 0)
+        lines_ahead.sort(key=lambda l: l.centerdistance)
+        best_course = Line(lines_ahead[0].guidepoint, lines_ahead[0].guidepoint, lines_ahead[1].guidepoint,
+                           self.img_center)
+        yaw_drift = round(best_course.angle, 0)
 
-    if yaw_drift < 260 and yaw_drift > 270:
-        # if best cours is to right, give negative angle from 0 deg
-        yaw_drift = yaw_drift - 360
-    ## END OF YAW
+        if 360 > yaw_drift > 270:
+            # if best course is to right, give negative angle from 0 deg
+            yaw_drift = yaw_drift - 360
 
-    ## CALCULATE ROLL DRIFT
-    # based on two closed points to center
+        self.yaw_drift = yaw_drift
 
-    # sort by distance from image center
-    lines.sort(key=lambda l: l.centerdistance)
+    def draw_image(self, frame):
+        cv2.drawContours(frame, [self.conts[0]], -1, (255, 0, 0), 1)
+        cv2.circle(frame, self.lines_ahead[0].guidepoint, 7, (0, 255, 0), -1)  # closest point to center of image
+        cv2.circle(frame, self.lines_ahead[1].guidepoint, 7, (255, 255, 0), -1)  # ... one above it
+        cv2.circle(frame, self.lines_ahead[2].guidepoint, 7, (255, 255, 0), -1)  # ... and one below
 
-    cv2.circle(frame, lines[0].guidepoint, 7, (0, 255, 255), -1)  # closest point to center of image
-    cv2.circle(frame, lines[1].guidepoint, 7, (0, 255, 255), -1)  # ... one above it
+        cv2.putText(frame, "Roll drift: " + str(self.roll_drift) + " px", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 100), 2)
 
-    # fit line trough
-    roll_line = Line(lines[0].guidepoint, lines[0].guidepoint, lines[1].guidepoint, img_center)
-    cv2.line(frame, roll_line.p1, roll_line.p2, (0, 255, 255), 2)  # Draw it
+        cv2.putText(frame, "Yaw drift: " + str(self.yaw_drift) + " deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 100), 2)
+        cv2.imshow('image', frame)
 
-    # Line perpendicular to roll line
-    cross_line = roll_line.plot_point(img_center, int(roll_line.angle) + 90, 250)
-
-    # closest point on roll line to image center
-    cross_point = Line.line_intersection((roll_line.p1, roll_line.p2), (cross_line[0], cross_line[1]))
-    cv2.circle(frame, cross_point, 4, (255, 0, 255), -1)  # cross line endpoint
-
-    roll_drift = round(h.distance(cross_point, img_center), 0)
-
-    ## END OF ROLL DRIFT
-
-
-
-
-    cv2.putText(frame, "Roll drift: " + str(roll_drift) + " px", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                (255, 255, 100), 2)
-
-    cv2.putText(frame, "Yaw drift: " + str(yaw_drift) + " deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                (255, 255, 100), 2)
-
-
-    end_time = time.time() - start_time
-    cv2.putText(frame, "Calc time: " + str(round(end_time, 4)) + " sec", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 100), 2)
-
-    cv2.imshow('image', frame)
-
-    if cv2.waitKey(1) & 0XFF == ord('q'):
-        break
-
-# cap.release()
-cv2.destroyAllWindows()
