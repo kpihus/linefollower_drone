@@ -25,12 +25,11 @@ def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
 
 
 class Phoenix:
-    def __init__(self, queue):
+    def __init__(self):
         self.connection_string = '127.0.0.1:14540'
         self.vehicle = None
         self.current_thrust = 0
         self.last_heartbeat = None
-        self.q = queue
 
     def infinite_loop(self):
         while True:
@@ -47,7 +46,6 @@ class Phoenix:
         vehicle.add_message_listener('HEARTBEAT', self.heart)
         vehicle.add_message_listener('ATTITUDE', self.attitude_manager)
         self.vehicle = vehicle
-        self.infinite_loop()
 
     def heart(self, name, msg, a):
         self.last_heartbeat = time.time()
@@ -67,17 +65,19 @@ class Phoenix:
 
 
 
-        vehicle.mode = VehicleMode("OFFBOARD")
+        vehicle.mode = VehicleMode("LOITER")
         while not vehicle.armed:
             print(" Waiting for arming...")
             vehicle.armed = True
             time.sleep(1)
-
+        print("Armed: " + str(vehicle.armed))
         current_altitude = vehicle.location.local_frame.down * -1
+        vehicle.mode = VehicleMode("OFFBOARD")
         while current_altitude < target_altitude:
+            current_altitude = vehicle.location.local_frame.down * -1
             self.current_thrust = TAKEOFF_THRUST
             self.set_attitude()
-
+        print('Takeoff done' + str(current_altitude))
         self.current_thrust = STABLE_THRUST
         self.set_attitude()
         self.altitude_holder(1.5)
@@ -85,12 +85,11 @@ class Phoenix:
     def altitude_holder(self, target_altitude):
         vehicle = self.vehicle
         ACCEPTABLE_ALTITUDE_ERROR = 0.15
-        global current_thrust
 
         print("Altitdude holer started")
 
-        kp = 0.1
-        ki = 0
+        kp = 0.001
+        ki = 0.5
         kd = 0
 
         last_error = 0
@@ -107,12 +106,19 @@ class Phoenix:
 
             error = target_altitude - current_altitude
 
-            if current_altitude < target_altitude + 0.3 or current_altitude > target_altitude - 0.3:
+            if current_altitude < target_altitude + 0.1 or current_altitude > target_altitude - 0.1:
                 errors_sum = 0
 
-            current_thrust = STABLE_THRUST + error * kp + errors_sum * ki + (last_error - error) * kd
+            thrust = STABLE_THRUST + error * kp + errors_sum * ki + (last_error - error) * kd
 
-            print("Current thrust: %s" % current_thrust)
+            if thrust > 1:
+                thrust = 1
+            if thrust < 0:
+                thrust = 0
+
+            self.current_thrust = thrust
+
+            print("Current thrust: " + str(self.current_thrust) + "Alt  - " + str(current_altitude))
             self.set_attitude()
             last_error = error
             errors_sum += error
@@ -184,3 +190,6 @@ class Phoenix:
         )
         vehicle.send_mavlink(msg)
 
+p = Phoenix()
+p.connect()
+p.arm_and_takeoff(1)

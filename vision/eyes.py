@@ -12,6 +12,7 @@ import cv2, threading, queue
 from helpers.vision import Helpers
 from vision.shapedetector import ShapeDetector
 from vision.shape import Line
+import numpy as np
 
 
 class Eyes:
@@ -31,6 +32,9 @@ class Eyes:
         self.roll_drift = 0
         self.yaw_drift = 0
         self.q = queue
+        self.pitch = 0
+        self.roll = 0
+        self.altitude = 0
 
     def start_capture(self):
         print("Starting video capture")
@@ -39,15 +43,12 @@ class Eyes:
             print("VideoCapture not opened")
             exit(-1)
 
-        if cv2.waitKey(1) & 0XFF == ord('q'):
-            self.cap.release()
-            cv2.destroyAllWindows()
-        self.process()
-
-
-
-    def process(self):
         while True:
+            # get some pyshical attributes
+            data = self.q.get()
+            self.pitch = data.pitch
+            self.roll = data.roll
+            self.altitude = data.altitude
             self.cap.grab()
             ret, frame = self.cap.retrieve()
             if not ret:
@@ -80,8 +81,8 @@ class Eyes:
         self.img_center = (int(cols / 2), int(rows / 2))
 
         self.process_contours()
-        self.calculate_roll_drift()
-        self.calculate_yaw_drift()
+        # self.calculate_roll_drift()
+        # self.calculate_yaw_drift()
         self.draw_image(frame)
 
     def process_contours(self):
@@ -115,7 +116,7 @@ class Eyes:
 
         if len(lines) < 2:
             print("Not enough lines found, nothing to do here")
-            return
+            # return
 
         lines.sort(key=lambda l: l.centerdistance)
         roll_line = Line(lines[0].guidepoint, lines[0].guidepoint, lines[1].guidepoint, self.img_center)
@@ -130,7 +131,7 @@ class Eyes:
 
         if len(lines_ahead) < 3:
             print("No ahead lines found, nothing todo here ")
-            return
+            # return
 
         lines_ahead.sort(key=lambda l: l.centerdistance)
         best_course = Line(lines_ahead[0].guidepoint, lines_ahead[0].guidepoint, lines_ahead[1].guidepoint,
@@ -144,19 +145,24 @@ class Eyes:
         self.yaw_drift = yaw_drift
 
     def draw_image(self, frame):
-        # cv2.drawContours(frame, [self.conts[0]], -1, (255, 0, 0), 1)
-        cv2.circle(frame, self.lines_ahead[0].guidepoint, 7, (0, 255, 0), -1)  # closest point to center of image
-        cv2.circle(frame, self.lines_ahead[1].guidepoint, 7, (255, 255, 0), -1)  # ... one above it
-        cv2.circle(frame, self.lines_ahead[2].guidepoint, 7, (255, 255, 0), -1)  # ... and one below
+        cv2.circle(frame, self.img_center, 7, (200, 100, 255), -1)  # Image center point
+        cv2.drawContours(frame, self.conts[0], -1, (255, 0, 0), 1)
 
-        cv2.putText(frame, "Roll drift: " + str(self.roll_drift) + " px", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+        if self.lines_ahead is not None and len(self.lines_ahead) >= 3:
+            cv2.circle(frame, self.lines_ahead[0].guidepoint, 7, (0, 255, 0), -1)  # closest point to center of image
+            cv2.circle(frame, self.lines_ahead[1].guidepoint, 7, (255, 255, 0), -1)  # ... one above it
+            cv2.circle(frame, self.lines_ahead[2].guidepoint, 7, (255, 255, 0), -1)  # ... and one below
+
+        cv2.putText(frame, "Pitch " + str(self.pitch) + " deg", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 100), 2)
 
-        cv2.putText(frame, "Yaw drift: " + str(self.yaw_drift) + " deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+        cv2.putText(frame, "Roll " + str(self.roll) + " deg", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 100), 2)
+
+        cv2.putText(frame, "Altitude " + str(self.altitude) + " m", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 100), 2)
+
         cv2.imshow('image', frame)
-
-
-q = queue.LifoQueue()
-e = Eyes(q)
-e.start_capture()
+        if cv2.waitKey(1) & 0XFF == ord('q'):
+            self.cap.release()
+            cv2.destroyAllWindows()

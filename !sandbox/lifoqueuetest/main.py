@@ -1,12 +1,9 @@
-from vision.eyes import Eyes
-from wings.phoenix import Phoenix
-from vision.eyes import Eyes
-from ears.ears import Ears
-
 from multiprocessing import Process
 from multiprocessing.managers import BaseManager
 from queue import LifoQueue
 
+from sender import Sender
+from receiver import Receiver
 
 class QueueManager(BaseManager):
     pass
@@ -15,19 +12,18 @@ class QueueManager(BaseManager):
 QueueManager.register('LifoQueue', LifoQueue)
 
 if __name__ == "__main__":
-
     manager = QueueManager()
     manager.start()
-    flight_params = manager.LifoQueue()
 
-    # b = Phoenix(flight_params)
-    eyes = Eyes(flight_params)
-    info = Ears(flight_params)
+    lifo = manager.LifoQueue()
 
-    p1 = Process(target=info.connect)
+    s = Sender(lifo)
+    r = Receiver(lifo)
+
+    p1 = Process(target=s.process)
     p1.start()
 
-    p2 = Process(target=eyes.start_capture)
+    p2 = Process(target=r.process)
     p2.start()
     p1.join()
     p2.join()

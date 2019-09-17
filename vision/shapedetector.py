@@ -18,9 +18,5 @@ class ShapeDetector:
                 shape = "rectangle"
             elif ar > 1.1:
                 shape = "rectangle"
-            else:
-                print(f'RECTANGLE: height {h} width {w} ratio {ar}.')
-        else:
-            print(f'SOME OTHER SHAPE {len(approx)}.')
 
         return shape
