@@ -22,16 +22,8 @@ import math
 
 import threading
 
-# Set up option parsing to get connection string
-import argparse
 
-parser = argparse.ArgumentParser(description='Control Copter and send commands in GUIDED mode ')
-parser.add_argument('--connect',
-                    help="Vehicle connection target string. If not specified, SITL automatically started and used.")
-args = parser.parse_args()
-
-connection_string = args.connect
-sitl = None
+connection_string = '127.0.0.1:14540'
 
 current_thrust = 0.5
 
@@ -68,7 +60,7 @@ def arm_and_takeoff_nogps(aTargetAltitude):
 
     print("Arming motors")
     # Copter should arm in GUIDED_NOGPS mode
-    vehicle.mode = VehicleMode("GUIDED_NOGPS")
+    vehicle.mode = VehicleMode("LOITER")
     vehicle.armed = True
 
     while not vehicle.armed:
@@ -80,7 +72,7 @@ def arm_and_takeoff_nogps(aTargetAltitude):
 
     current_thrust = DEFAULT_TAKEOFF_THRUST
     while True:
-        current_altitude = vehicle.location.global_relative_frame.alt
+        current_altitude = vehicle.location.local_frame.down * -1
         print(" Altitude: %f  Desired: %f" %
               (current_altitude, aTargetAltitude))
         if current_altitude >= aTargetAltitude * 0.8:  # Trigger just below target alt.
@@ -131,6 +123,7 @@ def send_attitude_target(roll_angle=0.0, pitch_angle=0.0,
 def set_attitude(roll_angle=0.0, pitch_angle=0.0,
                  yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True,
                  duration=0):
+    print("attitude "+ str(current_thrust))
     """
     Note that from AC3.3 the message should be re-sent more often than every
     second, as an ATTITUDE_TARGET order has a timeout of 1s.
