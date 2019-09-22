@@ -16,11 +16,18 @@ class Ears:
         self.vehicle = vehicle
         while True:
             altitude = vehicle.location.local_frame.down * -1
-            pitch = vehicle.attitude.pitch
-            roll = vehicle.attitude.roll
-            d = Data(altitude, pitch, roll)
+            pitch = math.degrees(vehicle.attitude.pitch)
+            roll = math.degrees(vehicle.attitude.roll)
+            yaw = math.degrees(vehicle.attitude.yaw)
+            north = vehicle.location.local_frame.north
+            east = vehicle.location.local_frame.east
+            speed = vehicle.groundspeed
+            d = Data(altitude, pitch, roll, yaw, north, east, speed)
             self.queue.put(d)
             time.sleep(0.001)
 
     def heart(self, name, msg, a):
         self.last_heartbeat = time.time()
+
+# e = Ears()
+# e.connect()

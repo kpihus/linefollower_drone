@@ -2,6 +2,7 @@ from math import atan2, degrees
 from helpers.vision import Helpers
 import math
 
+
 class Line:
     def __init__(self, guidepoint, p1, p2, imgcenter):
         self.guidepoint = guidepoint
@@ -15,7 +16,7 @@ class Line:
     def calculateangle(self, p1, p2):
         xDiff = p2[0] - p1[0]
         yDiff = p2[1] - p1[1]
-        angle = degrees(atan2(yDiff, xDiff)) + 90
+        angle = degrees(atan2(yDiff, xDiff))
         # if angle < 0:
         #     return 180 + angle
         return angle
@@ -25,24 +26,11 @@ class Line:
         return h.distance(center, guidepoint)
 
     def plot_point(self, point, angle, length):
-        angle = angle -90
-        '''
-        point - Tuple (x, y)
-        angle - Angle you want your end point at in degrees.
-        length - Length of the line you want to plot.
-
-        Will plot the line on a 10 x 10 plot.
-        '''
+        # angle = angle - 90
 
         # unpack the first point
         startx = point[0]
         starty = point[1]
-
-        # find the end point
-        endy = length * math.sin(math.radians(angle))
-        endx = length * math.cos(math.radians(angle))
-        by = length * math.sin(math.radians(angle-180))
-        bx = length * math.cos(math.radians(angle-180))
 
         x1 = startx
         y1 = starty
