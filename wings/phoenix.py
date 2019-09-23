@@ -1,9 +1,10 @@
 from dronekit import connect, Command, LocationGlobal, VehicleMode
+from simple_pid import PID
 from pymavlink import mavutil
 import time, sys, argparse, math, threading
 
-STABLE_THRUST = 0.588
-TAKEOFF_THRUST = 0.6
+TARGET_ALTITUDE = 1.5
+THRUST_UPDATE_INTERVAL = 0.01
 
 def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
     """
@@ -58,71 +59,44 @@ class Phoenix:
     def arm_and_takeoff(self, target_altitude):
         vehicle = self.vehicle
 
-
-        # while not vehicle.is_armable:
-        #     print(" Waiting for vehicle to initialise...")
-        #     time.sleep(1)
-
-
-
         vehicle.mode = VehicleMode("LOITER")
         while not vehicle.armed:
             print(" Waiting for arming...")
             vehicle.armed = True
             time.sleep(1)
+
         print("Armed: " + str(vehicle.armed))
-        current_altitude = vehicle.location.local_frame.down * -1
         vehicle.mode = VehicleMode("OFFBOARD")
-        while current_altitude < target_altitude:
-            current_altitude = vehicle.location.local_frame.down * -1
-            self.current_thrust = TAKEOFF_THRUST
-            self.set_attitude()
-        print('Takeoff done' + str(current_altitude))
-        self.current_thrust = STABLE_THRUST
-        self.set_attitude()
-        self.altitude_holder(1.5)
+
+        # Start the altitude holder, this will take the vehicle to required altitude
+        self.altitude_holder(TARGET_ALTITUDE)
 
     def altitude_holder(self, target_altitude):
         vehicle = self.vehicle
-        ACCEPTABLE_ALTITUDE_ERROR = 0.15
 
-        print("Altitdude holer started")
+        print("Altitude holder started")
 
-        kp = 0.001
-        ki = 0.5
-        kd = 0
+        # Setup PID parameters (NOTE: These are tested values, do not randomly change these)
+        kp = 0.35
+        ki = 0.2
+        kd = 0.35
 
-        last_error = 0
-        errors_sum = 0
+        # Setup PID
+        pid = PID(kp, ki, kd, setpoint=target_altitude)
+        pid.sample_time = THRUST_UPDATE_INTERVAL # we're currently updating this 0.01
+        pid.output_limits = (0, 1) # thrust can only be 0 to 1
 
         while (vehicle.mode != "LAND"):
+            # get current altitude
             current_altitude = vehicle.location.local_frame.down * -1
-            # print(" Altitude: %f Target Altitude: %f " % (current_altitude, target_altitude))
-            # print
-            # " Attitude: %s" % vehicle.attitude
 
-            # print " Velocity: %s" % vehicle.velocity
-            # print " Groundspeed: %s" % vehicle.groundspeed    # settable
-
-            error = target_altitude - current_altitude
-
-            if current_altitude < target_altitude + 0.1 or current_altitude > target_altitude - 0.1:
-                errors_sum = 0
-
-            thrust = STABLE_THRUST + error * kp + errors_sum * ki + (last_error - error) * kd
-
-            if thrust > 1:
-                thrust = 1
-            if thrust < 0:
-                thrust = 0
-
+            # calculate necessary thrust to be at target_altitude
+            thrust = pid(current_altitude)
             self.current_thrust = thrust
 
             print("Current thrust: " + str(self.current_thrust) + "Alt  - " + str(current_altitude))
-            self.set_attitude()
-            last_error = error
-            errors_sum += error
-            time.sleep(0.01)
+            self.set_only_thrust()
+            time.sleep(THRUST_UPDATE_INTERVAL)
 
     def land(self):
         vehicle = self.vehicle
@@ -132,10 +106,12 @@ class Phoenix:
         # todo read new attitude params from queue
         self.set_attitude()
 
+    def set_only_thrust(self):
+        # we only need to set thrust, this is here to keep all other values whatever vehicle has them at
+        self.set_attitude(-1, -1, -1, 0.0, False)
 
     def set_attitude(self, roll_angle=0.0, pitch_angle=0.0,
-                     yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True,
-                     duration=0):
+                     yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True):
         """
         Note that from AC3.3 the message should be re-sent more often than every
         second, as an ATTITUDE_TARGET order has a timeout of 1s.
@@ -144,16 +120,13 @@ class Phoenix:
         Sending the message multiple times is the recommended way.
         """
 
-        self.send_attitude_target(roll_angle, pitch_angle,
-                             yaw_angle, yaw_rate, use_yaw_rate)
-        start = time.time()
-        while time.time() - start < duration:
-            self.send_attitude_target(roll_angle, pitch_angle,
-                                 yaw_angle, yaw_rate, use_yaw_rate)
-            time.sleep(0.01)
-        # Reset attitude, or it will persist for 1s more due to the timeout
-        self.send_attitude_target(0, 0,
-                             0, 0, True)
+        # if any of the angles are defined as -1, keep whatever vehicle currently has
+        current_attitude = self.vehicle.attitude
+        roll_angle = current_attitude.roll if roll_angle == -1 else roll_angle
+        pitch_angle = current_attitude.pitch if pitch_angle == -1 else pitch_angle
+        yaw_angle = current_attitude.yaw if yaw_angle == -1 else yaw_angle
+
+        self.send_attitude_target(roll_angle, pitch_angle, yaw_angle, yaw_rate, use_yaw_rate)
 
     def send_attitude_target(self, roll_angle=0.0, pitch_angle=0.0,
                              yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True):
@@ -165,8 +138,6 @@ class Phoenix:
                 Note that as of Copter 3.5, thrust = 0.5 triggers a special case in
                 the code for maintaining current altitude.
         """
-
-        global current_thrust
 
         if not use_yaw_rate and yaw_angle is None:
             yaw_angle = vehicle.attitude.yaw
@@ -189,7 +160,3 @@ class Phoenix:
             self.current_thrust  # Thrust
         )
         vehicle.send_mavlink(msg)
-
-p = Phoenix()
-p.connect()
-p.arm_and_takeoff(1)
