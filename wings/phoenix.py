@@ -26,13 +26,20 @@ def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
 
 
 class Phoenix:
-    def __init__(self, flight_params, flight_commands):
+    def __init__(self, flight_params=None, flight_commands=None):
         self.connection_string = '127.0.0.1:14540'
         self.vehicle = None
         self.current_thrust = 0
         self.last_heartbeat = None
         self.fpq = flight_params
         self.fcq = flight_commands
+
+        # controls drone speed
+        self.current_pitch = 0
+
+        self.current_yaw = 0
+        self.current_roll = 0
+
 
     def infinite_loop(self):
         while True:
@@ -65,8 +72,18 @@ class Phoenix:
         print("Armed: " + str(vehicle.armed))
         vehicle.mode = VehicleMode("OFFBOARD")
 
+        # set starting yaw and roll values
+        self.current_yaw = math.degrees(vehicle.attitude.yaw)
+        self.current_roll = math.degrees(vehicle.attitude.roll)
+
+        # set starting speed to 0
+        self.current_pitch = 0
+
         # Start the altitude holder, this will take the vehicle to required altitude
         self.altitude_holder(TARGET_ALTITUDE)
+
+    def rad_to_degree (self, value):
+        return value * 180/math.pi
 
     def altitude_holder(self, target_altitude):
         vehicle = self.vehicle
@@ -92,38 +109,15 @@ class Phoenix:
             self.current_thrust = thrust
 
             # print("Current thrust: " + str(self.current_thrust) + "Alt  - " + str(current_altitude))
-            self.set_only_thrust()
+            self.fly()
             time.sleep(THRUST_UPDATE_INTERVAL)
 
     def land(self):
         vehicle = self.vehicle
         vehicle.mode = VehicleMode("LAND")
 
-    def drive(self):
-        # todo read new attitude params from queue
-        self.set_attitude()
-
-    def set_only_thrust(self):
-        # we only need to set thrust, this is here to keep all other values whatever vehicle has them at
-        self.set_attitude(-1, -1, -1, 0.0, False)
-
-    def set_attitude(self, roll_angle=0.0, pitch_angle=0.0,
-                     yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True):
-        """
-        Note that from AC3.3 the message should be re-sent more often than every
-        second, as an ATTITUDE_TARGET order has a timeout of 1s.
-        In AC3.2.1 and earlier the specified attitude persists until it is canceled.
-        The code below should work on either version.
-        Sending the message multiple times is the recommended way.
-        """
-
-        # if any of the angles are defined as -1, keep whatever vehicle currently has
-        current_attitude = self.vehicle.attitude
-        roll_angle = current_attitude.roll if roll_angle == -1 else roll_angle
-        pitch_angle = current_attitude.pitch if pitch_angle == -1 else pitch_angle
-        yaw_angle = current_attitude.yaw if yaw_angle == -1 else yaw_angle
-
-        self.send_attitude_target(roll_angle, pitch_angle, yaw_angle, yaw_rate, use_yaw_rate)
+    def fly(self):
+        self.send_attitude_target(self.current_roll, self.current_pitch, self.current_yaw, 0.0, False)
 
     def send_attitude_target(self, roll_angle=0.0, pitch_angle=0.0,
                              yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True):
@@ -135,12 +129,13 @@ class Phoenix:
                 Note that as of Copter 3.5, thrust = 0.5 triggers a special case in
                 the code for maintaining current altitude.
         """
-
         if not use_yaw_rate and yaw_angle is None:
             yaw_angle = vehicle.attitude.yaw
 
         if yaw_angle is None:
             yaw_angle = 0.0
+
+        print("Attitude " + str(vehicle.attitude))
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude
@@ -157,3 +152,9 @@ class Phoenix:
             self.current_thrust  # Thrust
         )
         vehicle.send_mavlink(msg)
+
+
+if __name__ == "__main__":
+
+    p = Phoenix()
+    p.connect()
