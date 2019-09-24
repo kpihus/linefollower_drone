@@ -7,16 +7,17 @@
 # appsink properties https://gstreamer.freedesktop.org/documentation/app/appsink.html?gi-language=c#properties
 
 
-import cv2, math
+import cv2
+import math
+import time
 
 from helpers.vision import Helpers
-from vision.shapedetector import ShapeDetector
 from vision.shape import Line
-import numpy as np
+from vision.shapedetector import ShapeDetector
 
 
 class Eyes:
-    def __init__(self, queue):
+    def __init__(self, flight_params, flight_commands):
         self.capture_src = 'udpsrc port=5600 caps="application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
@@ -28,13 +29,16 @@ class Eyes:
         self.image_rows = 0
         self.conts = None
         self.lines = None
+        self.bad_lines = None
         self.lines_ahead = None
         self.roll_line = None
         self.best_course = None
         self.start_time = 0
         self.roll_drift = 0
         self.yaw_drift = 0
-        self.q = queue
+        self.fpq = flight_params
+        self.fcq = flight_commands
+        self.flight_params_time = time.time()
         self.pitch = 0
         self.roll = 0
         self.yaw = 0
@@ -50,6 +54,8 @@ class Eyes:
         self.moving_line = None
         self.drive_dir = None
 
+        self.points1 = []
+
     def start_capture(self):
         print("Starting video capture")
         self.cap = cv2.VideoCapture(self.capture_src, self.capture_opts)
@@ -59,18 +65,19 @@ class Eyes:
 
         while True:
             # get some pyshical attributes
-            data = self.q.get()
+            data = self.fpq.get()
+            if data.timestamp > self.flight_params_time:
+                self.flight_params_time = data.timestamp
+                self.pitch = data.pitch
+                self.roll = data.roll
+                self.yaw = data.yaw
+                self.altitude = data.altitude
+                self.speed = data.speed
 
-            self.pitch = data.pitch
-            self.roll = data.roll
-            self.yaw = data.yaw
-            self.altitude = data.altitude
-            self.speed = data.speed
-
-            # update location only when moving
-            if self.speed >= 0.1:
-                self.north.append(data.north)
-                self.east.append(data.east)
+                # update location only when moving
+                if self.speed >= 0.1:
+                    self.north.append(data.north)
+                    self.east.append(data.east)
 
             self.cap.grab()
             ret, image = self.cap.retrieve()
@@ -121,6 +128,8 @@ class Eyes:
         self.calculate_yaw_drift()
         self.calculate_meters_in_view()
 
+        # print("Rolldrift " + str(self.roll_drift)+ " | Yaw drift " + str(self.yaw_drift))
+
         # reset flight path history
         if len(self.north) >= 10:
             self.north.pop(0)
@@ -133,6 +142,8 @@ class Eyes:
     def process_contours(self):
         sd = ShapeDetector()
         lines = []
+        bad_lines = []
+        points1 = []
         for c in self.conts[0]:
             shape = sd.detect(c)
             if shape == "rectangle":
@@ -152,9 +163,15 @@ class Eyes:
             point1 = (self.image_cols - 1, righty)
             point2 = (0, lefty)
 
+            self.points1.append(point1)
+
             newline = Line((cx, cy), point1, point2, self.image_center)
-            if self.moving_line is not None and abs(newline.angle) - abs(self.moving_line.angle) < 20:
+            if self.moving_line is not None and abs(abs(newline.angle) - abs(self.moving_line.angle)) < 30:
                 lines.append(newline)
+            else:
+                bad_lines.append(newline)
+
+        self.bad_lines = bad_lines
         self.lines = lines
 
     def calculate_roll_drift(self):
@@ -249,7 +266,7 @@ class Eyes:
             pass
 
         try:
-            cv2.putText(frame, "heading " + str(round(self.heading, 3)) + " deg", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+            cv2.putText(frame, "heading " + str(round(self.moving_line.angle, 3)) + " deg", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 100), 2)
         except:
             pass
@@ -301,6 +318,29 @@ class Eyes:
 
         try:
             cv2.line(frame, self.moving_line.p1, self.moving_line.p2, (0, 255, 0), 2)
+        except:
+            pass
+
+        for l in self.lines:
+            cv2.line(frame, l.p1, l.p2, (255, 0, 0), 1)
+            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (0, 0, 255), 2)
+
+        for l in self.bad_lines:
+            cv2.line(frame, l.p1, l.p2, (0, 0, 255), 1)
+            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (0, 0, 255), 2)
+
+        time_now = time.time()
+
+        cv2.putText(frame, "Time " + str(round(time_now - self.flight_params_time, 4)) + " s", (10, 300),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 255, 100), 2)
+
+        try:
+            cv2.putText(frame, str(round(self.moving_line.angle, 0)), self.image_center,
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (255, 255, 255), 2)
         except:
             pass
 

@@ -1,7 +1,8 @@
 
 
 class Data:
-    def __init__(self, altitude, pitch, roll, yaw, north, east, speed):
+    def __init__(self, timestamp, altitude, pitch, roll, yaw, north, east, speed):
+        self.timestamp = timestamp
         self.altitude = altitude
         self.pitch = pitch
         self.roll = roll

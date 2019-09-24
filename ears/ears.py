@@ -1,5 +1,8 @@
+import math
+import time
+
 from dronekit import connect
-import math, time
+
 from ears.data import Data
 
 class Ears:
@@ -22,7 +25,7 @@ class Ears:
             north = vehicle.location.local_frame.north
             east = vehicle.location.local_frame.east
             speed = vehicle.groundspeed
-            d = Data(altitude, pitch, roll, yaw, north, east, speed)
+            d = Data(time.time(), altitude, pitch, roll, yaw, north, east, speed)
             self.queue.put(d)
             time.sleep(0.001)
 

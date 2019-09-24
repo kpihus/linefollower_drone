@@ -26,11 +26,13 @@ def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
 
 
 class Phoenix:
-    def __init__(self):
+    def __init__(self, flight_params, flight_commands):
         self.connection_string = '127.0.0.1:14540'
         self.vehicle = None
         self.current_thrust = 0
         self.last_heartbeat = None
+        self.fpq = flight_params
+        self.fcq = flight_commands
 
     def infinite_loop(self):
         while True:
@@ -44,24 +46,19 @@ class Phoenix:
         print(" Type: %s" % vehicle._vehicle_type)
         print(" Armed: %s" % vehicle.armed)
         print(" System status: %s" % vehicle.system_status.state)
-        vehicle.add_message_listener('HEARTBEAT', self.heart)
-        vehicle.add_message_listener('ATTITUDE', self.attitude_manager)
         self.vehicle = vehicle
+        self.arm_and_takeoff()
 
-    def heart(self, name, msg, a):
-        self.last_heartbeat = time.time()
 
-    def attitude_manager(self, vehicle, name, msg, ):
-        pitch = math.degrees(msg.pitch)
-        roll = math.degrees(msg.roll)
-        # print("Roll: " + str(round(roll, 2)) + " Pitch: " + str(round(pitch, 2)))
-
-    def arm_and_takeoff(self, target_altitude):
+    def arm_and_takeoff(self):
         vehicle = self.vehicle
 
         vehicle.mode = VehicleMode("LOITER")
+        print(" System status: %s" % vehicle.system_status.state)
+        print("Starting to arm...")
+
         while not vehicle.armed:
-            print(" Waiting for arming...")
+            print(" Waiting for arming..." + str(vehicle.armed))
             vehicle.armed = True
             time.sleep(1)
 
@@ -94,7 +91,7 @@ class Phoenix:
             thrust = pid(current_altitude)
             self.current_thrust = thrust
 
-            print("Current thrust: " + str(self.current_thrust) + "Alt  - " + str(current_altitude))
+            # print("Current thrust: " + str(self.current_thrust) + "Alt  - " + str(current_altitude))
             self.set_only_thrust()
             time.sleep(THRUST_UPDATE_INTERVAL)
 
