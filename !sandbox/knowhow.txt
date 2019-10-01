@@ -20,3 +20,5 @@ gst-launch-1.0 udpsrc port="5000" caps = "application/x-rtp, media=(string)video
 ### EO VISON
 
 
+#### MATH
+Linear regression https://devarea.com/linear-regression-with-numpy/#.XYyQp_wzaXF

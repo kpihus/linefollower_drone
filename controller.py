@@ -22,19 +22,14 @@ if __name__ == "__main__":
     flight_params = manager.LifoQueue()
     flight_commands = manager.LifoQueue()
 
-    b = Phoenix(flight_params, flight_commands)
+    phoenix = Phoenix(flight_params, flight_commands)
     eyes = Eyes(flight_params, flight_commands)
-    info = Ears(flight_params)
 
-    p1 = Process(target=info.connect)
-    p1.start()
+    visual = Process(target=eyes.start_capture)
+    physical = Process(target=phoenix.loop)
 
-    p2 = Process(target=eyes.start_capture)
-    p2.start()
+    visual.start()
+    physical.start()
 
-    p3 = Process(target=b.connect)
-    p3.start()
-
-    p1.join()
-    p2.join()
-    p3.join()
+    visual.join()
+    physical.join()

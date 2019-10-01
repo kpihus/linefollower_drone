@@ -11,38 +11,61 @@ def calculateangle(p1, p2):
     return angle
 
 
-img = cv2.imread('box.png')
+# img = cv2.imread('box.png')
 
-gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-ret, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-contours, hier = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-cnt = contours[2]
-moments = cv2.moments(cnt)
+cap = cv2.VideoCapture(1)
 
-cx = int(moments["m10"] / moments["m00"])
-cy = int(moments["m01"] / moments["m00"])
+if not cap.isOpened():
+    raise IOError("Cannot open webcam")
 
-# then apply fitline() function
-[vx, vy, x, y] = cv2.fitLine(cnt, cv2.DIST_L2, 0, 0.01, 0.01)
+while True:
+    ret, img = cap.read()
+    if not ret:
+        print('frame empty')
+        break
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+    thresh = cv2.threshold(blurred, 100, 200, cv2.THRESH_BINARY)[1]
+    contours, hier = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    cnt = contours[0]
+    cv2.drawContours(img, cnt, -1, (0, 0, 255), 1)
+    moments = cv2.moments(cnt)
 
-# Now find two extreme points on the line to draw line
-lefty = int((-x * vy / vx) + y)
-righty = int(((gray.shape[1] - x) * vy / vx) + y)
+    if moments["m00"] == 0:
+        break
 
-point1 = (gray.shape[1] - 1, righty)
-point2 = (0, lefty)
+    cx = int(moments["m10"] / moments["m00"])
+    cy = int(moments["m01"] / moments["m00"])
 
-angle = calculateangle(point1, point2) + 90
+    # then apply fitline() function
+    [vx, vy, x, y] = cv2.fitLine(cnt, cv2.DIST_L2, 0, 0.01, 0.01)
 
-cv2.circle(img, point1, 7, (0, 255, 0), -1)  # green
-cv2.circle(img, point2, 7, (0, 0, 255), -1)  # red
+    # Now find two extreme points on the line to draw line
+    lefty = int((-x * vy / vx) + y)
+    righty = int(((gray.shape[1] - x) * vy / vx) + y)
 
-cv2.putText(img, str(round(angle, 1)), (int(cx), int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-            (255, 255, 100), 2)
+    point1 = (gray.shape[1] - 1, righty)
+    point2 = (0, lefty)
 
-# Finally draw the line
-cv2.line(img, point1, point2, 255, 2)
+    angle = degrees(atan2(vy, vx))
 
-cv2.imshow('image', img)
-cv2.waitKey(0)
+    print(angle)
+    # cv2.circle(img, point1, 7, (0, 255, 0), -1)  # green
+    # cv2.circle(img, point2, 7, (0, 0, 255), -1)  # red
+
+    try:
+        cv2.putText(img, str(round(angle, 1)), (int(cx), int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (255, 0, 100), 2)
+
+        # Finally draw the line
+        cv2.line(img, point1, point2, 255, 2)
+
+        cv2.imshow('image', img)
+        # cv2.imshow('tresh', thresh)
+    except:
+        pass
+    c = cv2.waitKey(1)
+    if c == 27:
+        break
+
 cv2.destroyAllWindows()

@@ -58,7 +58,6 @@ while True:
 
     cv2.circle(frame, img_center, 7, (100, 100, 100), -1) # Image center point
 
-
     for c in cnts[0]:
         shape = sd.detect(c)
         cv2.drawContours(frame, [c], -1, (255, 0, 0), 1)

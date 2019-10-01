@@ -10,10 +10,14 @@
 import cv2
 import math
 import time
+import numpy as np
+from math import atan2, degrees
+import matplotlib.pyplot as plt
 
 from helpers.vision import Helpers
 from vision.shape import Line
 from vision.shapedetector import ShapeDetector
+from models.data import FlightCommands
 
 
 class Eyes:
@@ -65,25 +69,28 @@ class Eyes:
 
         while True:
             # get some pyshical attributes
-            data = self.fpq.get()
-            if data.timestamp > self.flight_params_time:
-                self.flight_params_time = data.timestamp
-                self.pitch = data.pitch
-                self.roll = data.roll
-                self.yaw = data.yaw
-                self.altitude = data.altitude
-                self.speed = data.speed
+            if not self.fpq.empty():
+                data = self.fpq.get()
+                if data.timestamp > self.flight_params_time:
+                    self.flight_params_time = data.timestamp
+                    self.pitch = data.pitch
+                    self.roll = data.roll
+                    self.yaw = data.yaw
+                    self.altitude = data.altitude
+                    self.speed = data.speed
 
-                # update location only when moving
-                if self.speed >= 0.1:
-                    self.north.append(data.north)
-                    self.east.append(data.east)
+                    # update location only when moving
+                    if self.speed >= 0.1:
+                        self.north.append(data.north)
+                        self.east.append(data.east)
 
             self.cap.grab()
+
             ret, image = self.cap.retrieve()
             if not ret:
                 print('frame empty')
                 continue
+            # rotate image 90 deg, because of landscape camera on drone
             frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
 
@@ -112,12 +119,20 @@ class Eyes:
         self.image_center = (int(cols / 2), int(rows / 2))
 
         # figure out flying direction (only if enough samples exists
-        if len(self.north) > 8 and len(self.east) > 8:
-            self.velocity_line = Line(self.image_center, (self.north[0], self.east[0]), (self.north[-1], self.east[-1]), self.image_center)
-            self.velocity_line.angle = self.velocity_line.angle
-            self.heading = self.velocity_line.angle
+        if len(self.north) > 2 and len(self.east) > 2:
+            # print("-------")
+            # print(self.north)
+            # print(self.east)
+            # print("-------")
+            distance = [self.north[-1] - self.north[0], self.east[-1] - self.east[0]]
+            angle = degrees(atan2(distance[1], distance[0]))
 
-            velocity_point = self.velocity_line.plot_point(self.image_center, self.velocity_line.angle - 90 - self.yaw, self.speed * 200 + 20)
+            self.heading = angle - self.yaw - 90
+
+            self.velocity_line = Line(self.image_center, (self.east[0], self.east[-1]), (self.north[-1], self.east[-1]), self.image_center)
+            self.velocity_line.angle = self.heading
+            #
+            velocity_point = self.velocity_line.plot_point(self.image_center, self.velocity_line.angle, self.speed * 200 + 20)
             self.moving_line = Line(self.image_center, velocity_point[1], self.image_center, self.image_center)
 
 
@@ -136,7 +151,7 @@ class Eyes:
 
         if len(self.east) >= 10:
             self.east.pop(0)
-
+        self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.roll_drift))
         self.draw_image(frame)
 
     def process_contours(self):
@@ -166,7 +181,8 @@ class Eyes:
             self.points1.append(point1)
 
             newline = Line((cx, cy), point1, point2, self.image_center)
-            if self.moving_line is not None and abs(abs(newline.angle) - abs(self.moving_line.angle)) < 30:
+            newline.angle = degrees(atan2(vy, vx))
+            if self.heading is not None and -30 < self.heading - newline.angle < 30:
                 lines.append(newline)
             else:
                 bad_lines.append(newline)
@@ -338,7 +354,7 @@ class Eyes:
                     (255, 255, 100), 2)
 
         try:
-            cv2.putText(frame, str(round(self.moving_line.angle, 0)), self.image_center,
+            cv2.putText(frame, str(round(self.heading, 0)), self.image_center,
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 2)
         except:

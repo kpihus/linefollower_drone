@@ -1,35 +1,60 @@
-from collections import deque
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from matplotlib.ticker import FuncFormatter
+import numpy as np
+from math import atan2, degrees, sqrt
+import cv2
 
-def init():
-    line.set_ydata([np.nan] * len(x))
-    return line,
 
-def animate(i):
-    # Add next value
-    data.append(i+1)
-    line.set_ydata(data)
-    plt.savefig('e:\\python temp\\fig_{:02}'.format(i))
-    print(i)
-    return line,
+def convert_angle(angle):
+    angle = angle - 90
+    if angle > (-90):
+        return angle
+    else:
+        return (angle + 90) * -1
 
-max_x = 10
-max_rand = 5
 
-data = deque(np.zeros(max_x), maxlen=max_x)  # hold the last 10 values
-x = np.arange(0, max_x)
+# NE
+north = np.array([3.3388235569000244, 3.5084047317504883, 3.5930519104003906, 3.697505474090576, 3.792581558227539, 3.9084575176239014, 4.013325214385986, 4.118331432342529, 4.215753078460693, 4.282521724700928])
+east = np.array([3.470292091369629, 3.6441051959991455, 3.737678289413452, 3.855083465576172, 3.961928367614746, 4.0899577140808105, 4.203526973724365, 4.316749572753906, 4.420989990234375, 4.492918491363525])
 
-fig, ax = plt.subplots()
-ax.set_ylim(0, max_rand)
-ax.set_xlim(0, max_x-1)
-line, = ax.plot(x, np.random.randint(0, max_rand, max_x))
-ax.xaxis.set_major_formatter(FuncFormatter(lambda x, pos: '{:.0f}s'.format(max_x - x - 1)))
-plt.xlabel('Seconds ago')
+# NW
+# north = np.array([14.843148231506348, 14.936271667480469, 14.992475509643555, 15.068068504333496, 15.068068504333496,
+#                   15.163475036621094, 15.242280960083008, 15.320785522460938, 15.320785522460938, 15.397920608520508])
+# east = np.array(
+#     [-13.554619789123535, -13.641221046447754, -13.693166732788086, -13.762807846069336, -13.762807846069336,
+#      -13.850167274475098, -13.921960830688477, -13.993142127990723, -13.993142127990723, -14.063075065612793])
 
-ani = animation.FuncAnimation(
-    fig, animate, init_func=init, interval=1000, blit=True, save_count=10)
+# N
+# north = np.array([30.807600021362305, 30.901599884033203, 31.01860237121582, 31.088998794555664, 31.206741333007812, 31.300954818725586, 31.395301818847656, 31.514301300048828, 31.60883140563965, 31.679208755493164])
+# east = np.array([-16.349367141723633, -16.34852409362793, -16.347469329833984, -16.34680938720703, -16.345605850219727, -16.34463119506836, -16.34364128112793, -16.342540740966797, -16.341712951660156, -16.341096878051758])
 
-plt.show()
+# W
+# north = np.array([36.45207595825195, 36.45207595825195, 36.453006744384766, 36.45451354980469, 36.455589294433594, 36.45663833618164, 36.45663833618164, 36.457855224609375, 36.45858383178711, 36.459720611572266])
+# east = np.array([-26.18817138671875, -26.18817138671875, -26.25994873046875, -26.38032341003418, -26.47614288330078, -26.571861267089844, -26.571861267089844, -26.691511154174805, -26.763750076293945, -26.885452270507812])
+
+
+y = north
+x = east
+
+distance = [north[-1] - north[0], east[-1] - east[0]]
+angle = degrees(atan2(distance[1], distance[0]))
+print(angle)
+
+# angle = degrees(atan2(5, 1))
+# print(angle)
+# if angle > (-90):
+#     output = angle
+# else:
+#     output = (angle + 90) * -1
+#
+# testarr = [(1, 5), (5, 1), (-1, 5), (-5, 1)]
+#
+# for a in testarr:
+#     angle = degrees(atan2(a[0], a[1]))
+#     print(str(angle) + " > " + str(convert_angle(angle)))
+
+# m = (len(x) * np.sum(x*y) - np.sum(x) * np.sum(y)) / (len(x)*np.sum(x*x) - np.sum(x) ** 2)
+
+# print(m)
+
+# plt.plot(east, north, 'o')
+# plt.show()
