@@ -27,7 +27,7 @@ def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
 
 
 class Phoenix:
-    def __init__(self, flight_params, flight_commands):
+    def __init__(self, flight_params=None, flight_commands=None):
         self.connection_string = '127.0.0.1:14540'
         self.vehicle = None
         self.last_heartbeat = None
@@ -159,6 +159,8 @@ class Phoenix:
         if yaw_angle is None:
             yaw_angle = 0.0
 
+        print("Attitude " + str(vehicle.attitude))
+
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude
         # Thrust <  0.5: Descend
@@ -174,3 +176,9 @@ class Phoenix:
             self.thrust  # Thrust
         )
         vehicle.send_mavlink(msg)
+
+
+if __name__ == "__main__":
+
+    p = Phoenix()
+    p.connect()
