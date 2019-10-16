@@ -203,7 +203,7 @@ class Eyes:
 
             self.points1.append(point1)
 
-            newline = Line((cx, cy), point1, point2, self.image_center, vx, vy)
+            newline = Line((cx, cy), point1, point2, self.image_center)
             newline.angle = degrees(atan2(vya, vxa))# * -1
 
             if self.heading is not None and -30 < self.heading - newline.angle < 30:
@@ -369,8 +369,6 @@ class Eyes:
         for l in self.bad_lines:
             cv2.line(frame, l.p1, l.p2, (0, 0, 255), 1)
             cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
-                        (0, 0, 255), 2)
-            cv2.putText(frame, str(round(l.vx, 3)), (l.guidepoint[0] + 30, l.guidepoint[1]), FONT, 0.5,
                         (0, 0, 255), 2)
 
         time_now = time.time()

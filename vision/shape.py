@@ -4,15 +4,13 @@ import math
 
 
 class Line:
-    def __init__(self, guidepoint, p1, p2, imgcenter, vx = None, vy = None):
+    def __init__(self, guidepoint, p1, p2, imgcenter):
         self.guidepoint = guidepoint
         self.p1 = p1
         self.p2 = p2
         self.angle = self.calculateangle(p1, p2)
         self.centerdistance = self.calculatecenterdistance(imgcenter, guidepoint)
         self.imgcenter = imgcenter
-        self.vx = vx
-        self.vy = vy
         pass
 
     def calculateangle(self, p1, p2):
