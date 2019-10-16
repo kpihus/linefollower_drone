@@ -51,16 +51,15 @@ class Phoenix:
             self.vehicle.armed = True
             time.sleep(1)
 
-        self.vehicle.mode = VehicleMode("OFFBOARD")
+        # self.vehicle.mode = VehicleMode("OFFBOARD")
         print("Starting infinite loop")
         while self.vehicle.mode != "LAND":
+            start = time.time()
             self.roll_angle = -1
             self.pitch_angle = -1
             self.yaw_angle = -1
             if not self.fcq.empty():
                 flight_commands = self.fcq.get()
-                print("Got flight commands")
-                print(str(flight_commands))
                 if flight_commands and flight_commands.timestamp > self.last_flight_commands:
                     self.yaw_drift = flight_commands.yaw_drift
                     self.roll_drift = flight_commands.roll_drift
@@ -72,6 +71,7 @@ class Phoenix:
             self.roll_holder()
 
             self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
+            process_time = time.time() - start
             time.sleep(UPDATE_INTERVAL)
 
     def connect(self):
@@ -158,8 +158,6 @@ class Phoenix:
 
         if yaw_angle is None:
             yaw_angle = 0.0
-
-        print("Attitude " + str(vehicle.attitude))
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude

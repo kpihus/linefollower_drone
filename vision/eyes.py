@@ -19,10 +19,11 @@ from vision.shape import Line
 from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
 
+FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 class Eyes:
     def __init__(self, flight_params, flight_commands):
-        self.capture_src = 'udpsrc port=5600 caps="application/x-rtp, payload=127" ! rtph264depay ! avdec_h264 ! videoconvert ! appsink drop=true'
+        self.capture_src = 'udpsrc buffer-size=12000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)720, height=(string)576,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=25/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
         self.cap = None
@@ -75,7 +76,7 @@ class Eyes:
                     self.flight_params_time = data.timestamp
                     self.pitch = data.pitch
                     self.roll = data.roll
-                    self.yaw = data.yaw
+                    self.yaw = data.yaw * -1
                     self.altitude = data.altitude
                     self.speed = data.speed
 
@@ -94,6 +95,8 @@ class Eyes:
             frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
 
+    def fix_yaw(self, yaw):
+        pass
     def process_image(self):
         frame = cv2.imread('testpic_cross.png')
         self.process_frame(frame)
@@ -124,16 +127,19 @@ class Eyes:
             # print(self.north)
             # print(self.east)
             # print("-------")
-            distance = [self.north[-1] - self.north[0], self.east[-1] - self.east[0]]
-            angle = degrees(atan2(distance[1], distance[0]))
+            fstart = (self.north[0], self.east[0])
+            fend = (self.north[-1], self.east[-1])
+            xDiff = fend[0] - fstart[0]
+            yDiff = fend[1] - fstart[1]
 
-            self.heading = angle - self.yaw - 90
+            angle = degrees(atan2(yDiff, xDiff)) * -1
+            self.heading = angle - self.yaw
 
-            self.velocity_line = Line(self.image_center, (self.east[0], self.east[-1]), (self.north[-1], self.east[-1]), self.image_center)
-            self.velocity_line.angle = self.heading
-            #
-            velocity_point = self.velocity_line.plot_point(self.image_center, self.velocity_line.angle, self.speed * 200 + 20)
-            self.moving_line = Line(self.image_center, velocity_point[1], self.image_center, self.image_center)
+            # self.velocity_line = Line(self.image_center, (self.east[0], self.east[-1]), (self.north[-1], self.east[-1]), self.image_center)
+            # self.velocity_line.angle = self.heading
+            # #
+            # velocity_point = self.velocity_line.plot_point(self.image_center, self.velocity_line.angle, self.speed * 200 + 20)
+            # self.moving_line = Line(self.image_center, velocity_point[1], self.image_center, self.image_center)
 
 
 
@@ -172,16 +178,34 @@ class Eyes:
                 continue
 
             [vx, vy, x, y] = cv2.fitLine(c, cv2.DIST_L2, 0, 0.01, 0.01)
+
+            # Point all line to northish direction
+
+            vxa = vx
+            vya = vy
+            # if (vxa < 0 and vya < 0) or (vxa > 0 and vya < 0):
+            #     vxa = vxa * -1
+            #     vya = vya * -1
+
+            # if vxa > 0 and vya > 0:
+            #     vya = vya * -1
+            #
+            # if vxa < 0 and vya > 0:
+            #     vxa = vxa * -1
+
             lefty = int((-x * vy / vx) + y)
             righty = int(((self.image_cols - x) * vy / vx) + y)
 
             point1 = (self.image_cols - 1, righty)
             point2 = (0, lefty)
 
+
+
             self.points1.append(point1)
 
-            newline = Line((cx, cy), point1, point2, self.image_center)
-            newline.angle = degrees(atan2(vy, vx))
+            newline = Line((cx, cy), point1, point2, self.image_center, vx, vy)
+            newline.angle = degrees(atan2(vya, vxa))# * -1
+
             if self.heading is not None and -30 < self.heading - newline.angle < 30:
                 lines.append(newline)
             else:
@@ -231,7 +255,7 @@ class Eyes:
 
     def calculate_meters_in_view(self):
         self.meters_front = self.altitude * math.atan(85 / 2)
-        self.pixels_per_m = self.image_rows / 2 / self.meters_front
+        # self.pixels_per_m = self.image_rows / 2 / self.meters_front
 
     def draw_image(self, frame):
         cv2.circle(frame, self.image_center, 7, (200, 100, 255), -1)  # Image center point
@@ -282,7 +306,7 @@ class Eyes:
             pass
 
         try:
-            cv2.putText(frame, "heading " + str(round(self.moving_line.angle, 3)) + " deg", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+            cv2.putText(frame, "heading " + str(round(self.heading + self.yaw, 3)) + " deg", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 100), 2)
         except:
             pass
@@ -339,12 +363,14 @@ class Eyes:
 
         for l in self.lines:
             cv2.line(frame, l.p1, l.p2, (255, 0, 0), 1)
-            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
                         (0, 0, 255), 2)
 
         for l in self.bad_lines:
             cv2.line(frame, l.p1, l.p2, (0, 0, 255), 1)
-            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
+                        (0, 0, 255), 2)
+            cv2.putText(frame, str(round(l.vx, 3)), (l.guidepoint[0] + 30, l.guidepoint[1]), FONT, 0.5,
                         (0, 0, 255), 2)
 
         time_now = time.time()
