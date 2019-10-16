@@ -45,8 +45,9 @@ def detect(c):
     return shape
 
 
-img = cv2.imread('real_cross.png')
+oimg = cv2.imread('real_cross.png')
 # img = cv2.flip(originalImage, 1)
+img = cv2.rotate(oimg, cv2.ROTATE_90_CLOCKWISE)
 rows, cols = img.shape[:2]
 print("Cols" + str(cols))
 print("Rows" + str(rows))
@@ -85,15 +86,15 @@ if moments["m00"] != 0:# and shape == "rectangle":
 
     vxa = vx
     vya = vy
-    if vxa < 0 and vya < 0 or vxa > 0 and vya < 0:
-        vxa = vxa * -1
-        vya = vya * -1
-
-    if vxa > 0 and vya > 0:
-        vya = vya * -1
-
-    if vxa < 0 and vya > 0:
-        vxa = vxa * -1
+    # if vxa < 0 and vya < 0 or vxa > 0 and vya < 0:
+    #     vxa = vxa * -1
+    #     vya = vya * -1
+    #
+    # if vxa > 0 and vya > 0:
+    #     vya = vya * -1
+    #
+    # if vxa < 0 and vya > 0:
+    #     vxa = vxa * -1
 
     # vy = abs(vy)
     lefty = int((-x * vy / vx) + y)

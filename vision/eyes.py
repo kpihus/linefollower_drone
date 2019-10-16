@@ -76,7 +76,7 @@ class Eyes:
                     self.flight_params_time = data.timestamp
                     self.pitch = data.pitch
                     self.roll = data.roll
-                    self.yaw = data.yaw * -1
+                    self.yaw = data.yaw
                     self.altitude = data.altitude
                     self.speed = data.speed
 
@@ -132,8 +132,11 @@ class Eyes:
             xDiff = fend[0] - fstart[0]
             yDiff = fend[1] - fstart[1]
 
-            angle = degrees(atan2(yDiff, xDiff)) * -1
+            angle = degrees(atan2(yDiff, xDiff))
+
             self.heading = angle - self.yaw
+            if self.heading < -180:
+                self.heading += 360
 
             # self.velocity_line = Line(self.image_center, (self.east[0], self.east[-1]), (self.north[-1], self.east[-1]), self.image_center)
             # self.velocity_line.angle = self.heading
@@ -181,11 +184,11 @@ class Eyes:
 
             # Point all line to northish direction
 
-            vxa = vx
-            vya = vy
-            # if (vxa < 0 and vya < 0) or (vxa > 0 and vya < 0):
-            #     vxa = vxa * -1
-            #     vya = vya * -1
+            vxa = -vy
+            vya = vx
+            if vxa < 0:
+                vxa = -vxa
+                vya = -vya
 
             # if vxa > 0 and vya > 0:
             #     vya = vya * -1
@@ -242,15 +245,16 @@ class Eyes:
             return
 
         lines_ahead.sort(key=lambda l: l.centerdistance)
-        best_course = Line(lines_ahead[0].guidepoint, lines_ahead[0].guidepoint, lines_ahead[1].guidepoint,
-                           self.image_center)
-        yaw_drift = round(best_course.angle, 0)
 
-        if 360 > yaw_drift > 270:
-            # if best course is to right, give negative angle from 0 deg
-            yaw_drift = yaw_drift - 360
+        fstart = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
+        fend = (-lines_ahead[1].guidepoint[1], lines_ahead[1].guidepoint[0])
+        xDiff = fend[0] - fstart[0]
+        yDiff = fend[1] - fstart[1]
 
-        self.best_course = best_course
+        correct_yaw = degrees(atan2(yDiff, xDiff))
+
+        yaw_drift = round(correct_yaw - self.heading, 0)
+
         self.yaw_drift = yaw_drift
 
     def calculate_meters_in_view(self):
@@ -376,6 +380,8 @@ class Eyes:
         cv2.putText(frame, "Time " + str(round(time_now - self.flight_params_time, 4)) + " s", (10, 300),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 100), 2)
+
+        cv2.putText(frame, "Yaw drift " + str(self.yaw_drift) + " deg", (10, 320), FONT, 0.5, (255, 255, 100), 2)
 
         try:
             cv2.putText(frame, str(round(self.heading, 0)), self.image_center,
