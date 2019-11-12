@@ -14,10 +14,9 @@ class ShapeDetector:
             (x, y, w, h) = cv2.boundingRect(approx)
             ar = w / float(h)
 
-            if w > 20 and h > 20:
+            if w > 10 and h > 10:
                 if ar >= 0.05 and ar <= 0.9:
                     shape = "rectangle"
                 elif ar > 1.1:
                     shape = "rectangle"
-
         return shape

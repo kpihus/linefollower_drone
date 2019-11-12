@@ -23,7 +23,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 class Eyes:
     def __init__(self, flight_params, flight_commands):
-        self.capture_src = 'udpsrc buffer-size=12000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)720, height=(string)576,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=25/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
+        self.capture_src = 'udpsrc buffer-size=24000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)640, height=(string)640,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=60/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
         self.cap = None
@@ -40,6 +40,7 @@ class Eyes:
         self.best_course = None
         self.start_time = 0
         self.roll_drift = 0
+        self.correct_yaw = 0
         self.yaw_drift = 0
         self.fpq = flight_params
         self.fcq = flight_commands
@@ -111,8 +112,8 @@ class Eyes:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         # cv2.imshow('blurred', blurred)
-        thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY)[1]
-        # cv2.imshow('threh', thresh)
+        thresh = cv2.threshold(blurred, 230, 255, cv2.THRESH_BINARY)[1]
+        cv2.imshow('threh', thresh)
         self.conts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         rows, cols = frame.shape[:2]  # frame dimensions
@@ -123,10 +124,6 @@ class Eyes:
 
         # figure out flying direction (only if enough samples exists
         if len(self.north) > 2 and len(self.east) > 2:
-            # print("-------")
-            # print(self.north)
-            # print(self.east)
-            # print("-------")
             fstart = (self.north[0], self.east[0])
             fend = (self.north[-1], self.east[-1])
             xDiff = fend[0] - fstart[0]
@@ -137,13 +134,6 @@ class Eyes:
             self.heading = angle - self.yaw
             if self.heading < -180:
                 self.heading += 360
-
-            # self.velocity_line = Line(self.image_center, (self.east[0], self.east[-1]), (self.north[-1], self.east[-1]), self.image_center)
-            # self.velocity_line.angle = self.heading
-            # #
-            # velocity_point = self.velocity_line.plot_point(self.image_center, self.velocity_line.angle, self.speed * 200 + 20)
-            # self.moving_line = Line(self.image_center, velocity_point[1], self.image_center, self.image_center)
-
 
 
         # Calculate and process all kind of stuff
@@ -238,7 +228,7 @@ class Eyes:
         lines_ahead = [l for l in lines if l.guidepoint[1] <= self.image_center[1]]
         self.lines_ahead = lines_ahead
 
-        if len(lines_ahead) < 3:
+        if len(lines_ahead) < 2:
             # print("No ahead lines found, nothing todo here ")
             self.yaw_drift = 0
             self.best_course = None
@@ -251,9 +241,9 @@ class Eyes:
         xDiff = fend[0] - fstart[0]
         yDiff = fend[1] - fstart[1]
 
-        correct_yaw = degrees(atan2(yDiff, xDiff))
+        self.correct_yaw = round(degrees(atan2(yDiff, xDiff)), 0)
 
-        yaw_drift = round(correct_yaw - self.heading, 0)
+        yaw_drift = round(self.correct_yaw - self.heading, 0)
 
         self.yaw_drift = yaw_drift
 
@@ -366,14 +356,20 @@ class Eyes:
             pass
 
         for l in self.lines:
-            cv2.line(frame, l.p1, l.p2, (255, 0, 0), 1)
-            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
-                        (0, 0, 255), 2)
+            try:
+                cv2.line(frame, l.p1, l.p2, (255, 0, 0), 1)
+                cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
+                            (0, 0, 255), 2)
+            except:
+                pass
 
         for l in self.bad_lines:
-            cv2.line(frame, l.p1, l.p2, (0, 0, 255), 1)
-            cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
-                        (0, 0, 255), 2)
+            try:
+                cv2.line(frame, l.p1, l.p2, (0, 0, 255), 1)
+                cv2.putText(frame, str(round(l.angle, 0)), l.guidepoint, FONT, 0.5,
+                            (0, 0, 255), 2)
+            except:
+                pass
 
         time_now = time.time()
 
@@ -381,7 +377,9 @@ class Eyes:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 100), 2)
 
-        cv2.putText(frame, "Yaw drift " + str(self.yaw_drift) + " deg", (10, 320), FONT, 0.5, (255, 255, 100), 2)
+        cv2.putText(frame, "Correct Yaw " + str(self.correct_yaw) + " deg", (10, 320), FONT, 0.5, (255, 255, 100), 2)
+        cv2.putText(frame, "Yaw drift " + str(self.yaw_drift) + " deg", (10, 340), FONT, 0.5, (255, 255, 100), 2)
+        cv2.putText(frame, "Roll drift " + str(self.roll_drift) + " px", (10, 360), FONT, 0.5, (255, 255, 100), 2)
 
         try:
             cv2.putText(frame, str(round(self.heading, 0)), self.image_center,
