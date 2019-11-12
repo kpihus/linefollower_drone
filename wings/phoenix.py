@@ -35,12 +35,21 @@ class Phoenix:
         self.fcq = flight_commands
         self.last_flight_commands = time.time()
         self.flightData = FlightData()
-        self.roll_angle = 0.0
-        self.pitch_angle = 0.0
-        self.yaw_angle = 0.0
         self.thrust = 0.0
         self.yaw_drift = 0.0
         self.roll_drift = 0.0
+
+        self.thrust_pid = None
+        self.roll_pid = None
+        self.yaw_pid = None
+
+        # default angles 0, 0 and current yaw
+        self.roll_angle = -999
+        self.pitch_angle = 0
+        self.yaw_angle = -999
+
+        # setup PIDs
+        self.setup_pids()
 
     def loop(self):
         self.connect()
@@ -51,13 +60,14 @@ class Phoenix:
             self.vehicle.armed = True
             time.sleep(1)
 
-        # self.vehicle.mode = VehicleMode("OFFBOARD")
+        self.vehicle.mode = VehicleMode("OFFBOARD")
         print("Starting infinite loop")
+
+        # setup PIDs
+        self.setup_pids()
+
         while self.vehicle.mode != "LAND":
             start = time.time()
-            self.roll_angle = -1
-            self.pitch_angle = -1
-            self.yaw_angle = -1
             if not self.fcq.empty():
                 flight_commands = self.fcq.get()
                 if flight_commands and flight_commands.timestamp > self.last_flight_commands:
@@ -82,6 +92,39 @@ class Phoenix:
         print(" System status: %s" % vehicle.system_status.state)
         self.vehicle = vehicle
 
+    def setup_pids(self):
+        # ------------------- THRUST
+        # Setup PID parameters (NOTE: These are tested values, do not randomly change these)
+        thrust_kp = 0.35
+        thrust_ki = 0.2
+        thrust_kd = 0.35
+
+        # Setup PID
+        self.thrust_pid = PID(thrust_kp, thrust_ki, thrust_kd, setpoint=TARGET_ALTITUDE)
+        self.thrust_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
+        self.thrust_pid.output_limits = (0, 1)
+
+        # ------------------- ROLL
+
+        roll_kp = 0.2
+        roll_ki = 0.2
+        roll_kd = 0.8
+
+        # PID for roll
+        self.roll_pid = PID(roll_kp, roll_ki, roll_kd, setpoint=0)
+        self.roll_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
+        self.roll_pid.output_limits = (-5, 5)  # roll angle should only be between 5 / -5
+
+        # ------------------- YAW
+        yaw_kp = 0.2
+        yaw_ki = 0.2
+        yaw_kd = 0.8
+
+        # PID for yaw
+        self.yaw_pid = PID(yaw_kp, yaw_ki, yaw_kd, setpoint=0)
+        self.yaw_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
+        self.yaw_pid.output_limits = (-180, 180)
+
     def gather_info(self):
         altitude = self.vehicle.location.local_frame.down * -1
         pitch = math.degrees(self.vehicle.attitude.pitch)
@@ -94,31 +137,16 @@ class Phoenix:
         self.fpq.put(self.flightData)
 
     def altitude_holder(self):
-        vehicle = self.vehicle
-
-        # Setup PID parameters (NOTE: These are tested values, do not randomly change these)
-        kp = 0.35
-        ki = 0.2
-        kd = 0.35
-
-        # Setup PID
-        pid = PID(kp, ki, kd, setpoint=TARGET_ALTITUDE)
-        pid.sample_time = UPDATE_INTERVAL # we're currently updating this 0.01
-        pid.output_limits = (0, 1)  # thrust can only be 0 to 1
-
-        self.thrust = pid(self.flightData.altitude)
+        self.thrust = self.thrust_pid(self.flightData.altitude)
+        #print("new thrust", self.thrust)
 
     def roll_holder(self):
-        kp = 0.35
-        ki = 0.2
-        kd = 0.35
-        drift = self.roll_drift
+        print("calculating roll angle")
+        self.roll_angle = self.roll_pid(math.degrees(self.vehicle.attitude.roll) - self.roll_drift)
+        #print("new roll angle", self.roll_angle)
 
     def yaw_holder(self):
-        kp = 0.35
-        ki = 0.2
-        kd = 0.35
-        drift = self.yaw_drift
+        self.yaw_angle = self.yaw_pid(math.degrees(self.vehicle.attitude.yaw) - self.yaw_drift)
 
     def land(self):
         vehicle = self.vehicle
@@ -136,9 +164,9 @@ class Phoenix:
 
         # if any of the angles are defined as -1, keep whatever vehicle currently has
         current_attitude = self.vehicle.attitude
-        roll_angle = current_attitude.roll if roll_angle == -1 else roll_angle
-        pitch_angle = current_attitude.pitch if pitch_angle == -1 else pitch_angle
-        yaw_angle = current_attitude.yaw if yaw_angle == -1 else yaw_angle
+        roll_angle = math.degrees(current_attitude.roll) if roll_angle == -999 else roll_angle
+        pitch_angle = math.degrees(current_attitude.pitch) if pitch_angle == -999 else pitch_angle
+        yaw_angle = math.degrees(current_attitude.yaw) if yaw_angle == -999 else yaw_angle
 
         self.send_attitude_target(roll_angle, pitch_angle, yaw_angle, yaw_rate, use_yaw_rate)
 
@@ -158,6 +186,8 @@ class Phoenix:
 
         if yaw_angle is None:
             yaw_angle = 0.0
+
+        print("New attitude", roll_angle, pitch_angle, yaw_angle)
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude
