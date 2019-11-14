@@ -44,27 +44,66 @@ class Phoenix:
         self.yaw_pid = None
 
         # default angles 0, 0 and current yaw
-        self.roll_angle = -999
+        self.roll_angle = 0
         self.pitch_angle = 0
         self.yaw_angle = -999
 
         # setup PIDs
         self.setup_pids()
 
+        # stage lengths in seconds
+        self.takeoff_stage_time = 2
+        self.start_moving_time = 2
+
     def loop(self):
+        """
+            The loop will go through few stages,
+            firstly we will make sure the vehicle is armed and in correct mode to accept attitude
+            then we will enter into "get vehicle into air" mode, this will enable thrust PID and get vehicle to
+            TARGET_ALTITUDE
+
+            after takeoff stage, we will modify vehicle pitch so it would start moving forward
+            after start moving stage, we will enable yaw and pitch PIDs to actually keep the vehicle on expect track
+
+            stages are switched using time constraints for simplifications
+        :return:
+        """
         self.connect()
         self.vehicle.mode = VehicleMode("LOITER")
 
+        print("Starting stage ONE 'arming'")
+
+        # stage one, wait for arming
         while not self.vehicle.armed:
             print(" Waiting for arming..." + str(self.vehicle.armed))
             self.vehicle.armed = True
             time.sleep(1)
 
         self.vehicle.mode = VehicleMode("OFFBOARD")
-        print("Starting infinite loop")
+        print("Starting stage TWO 'takeoff'")
 
         # setup PIDs
         self.setup_pids()
+
+        stage_two_end = time.time() + self.takeoff_stage_time
+        while time.time() < stage_two_end:
+            self.gather_info()
+            self.altitude_holder()
+            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
+            time.sleep(UPDATE_INTERVAL)
+
+        print("Starting stage THREE 'start moving'")
+
+        stage_thee_end = time.time() + self.start_moving_time
+
+        self.pitch_angle = -1.7
+        while time.time() < stage_thee_end:
+            self.gather_info()
+            self.altitude_holder()
+            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
+            time.sleep(UPDATE_INTERVAL)
+
+        print("Starting stage FOUR 'AI'")
 
         while self.vehicle.mode != "LAND":
             start = time.time()
@@ -78,7 +117,7 @@ class Phoenix:
 
             self.altitude_holder()
             self.yaw_holder()
-            self.roll_holder()
+            #self.roll_holder()
 
             self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
             process_time = time.time() - start
@@ -111,7 +150,7 @@ class Phoenix:
         roll_kd = 0.8
 
         # PID for roll
-        self.roll_pid = PID(roll_kp, roll_ki, roll_kd, setpoint=0)
+        self.roll_pid = PID(roll_kp, roll_ki, roll_kd, setpoint=self.roll_angle)
         self.roll_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
         self.roll_pid.output_limits = (-5, 5)  # roll angle should only be between 5 / -5
 
@@ -121,7 +160,7 @@ class Phoenix:
         yaw_kd = 0.8
 
         # PID for yaw
-        self.yaw_pid = PID(yaw_kp, yaw_ki, yaw_kd, setpoint=0)
+        self.yaw_pid = PID(yaw_kp, yaw_ki, yaw_kd, setpoint=self.yaw_angle)
         self.yaw_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
         self.yaw_pid.output_limits = (-180, 180)
 
@@ -141,12 +180,13 @@ class Phoenix:
         #print("new thrust", self.thrust)
 
     def roll_holder(self):
-        print("calculating roll angle")
-        self.roll_angle = self.roll_pid(math.degrees(self.vehicle.attitude.roll) - self.roll_drift)
+        #self.roll_angle = self.roll_pid(math.degrees(self.vehicle.attitude.roll) - self.roll_drift)
+        self.roll_angle = math.degrees(self.vehicle.attitude.roll) - self.roll_drift
         #print("new roll angle", self.roll_angle)
 
     def yaw_holder(self):
-        self.yaw_angle = self.yaw_pid(math.degrees(self.vehicle.attitude.yaw) - self.yaw_drift)
+        #self.yaw_angle = self.yaw_pid(math.degrees(self.vehicle.attitude.yaw) - self.yaw_drift)
+        self.yaw_angle = math.degrees(self.vehicle.attitude.yaw) - self.yaw_drift
 
     def land(self):
         vehicle = self.vehicle
@@ -187,7 +227,7 @@ class Phoenix:
         if yaw_angle is None:
             yaw_angle = 0.0
 
-        print("New attitude", roll_angle, pitch_angle, yaw_angle)
+        #print("New attitude", roll_angle, pitch_angle, yaw_angle)
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude
