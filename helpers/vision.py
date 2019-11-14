@@ -32,6 +32,15 @@ class Helpers:
         pt_2 = np.array((pt_2[0], pt_2[1]))
         return np.linalg.norm(pt_1 - pt_2)
 
+    def distance_non_abs(self, pt_1, pt_2):
+        pt_1 = np.array((pt_1[0], pt_1[1]))
+        pt_2 = np.array((pt_2[0], pt_2[1]))
+        if pt_1[0] - pt_2[0] == 0:
+            return 0
+        sign = (pt_1[0] - pt_2[0]) / abs(pt_1[0] - pt_2[0])
+        print("pts", pt_1[0], pt_2[0])
+        return np.linalg.norm(pt_1 - pt_2) * sign
+
     def closest_point_to(self, target, lines):
         global closest
         dist = 99999999

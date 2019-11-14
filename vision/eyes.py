@@ -221,7 +221,7 @@ class Eyes:
         cross_line = roll_line.plot_point(self.image_center, int(roll_line.angle) + 90, 250)
         cross_point = Line.line_intersection((roll_line.p1, roll_line.p2), (cross_line[0], cross_line[1]))
         self.roll_line = roll_line
-        self.roll_drift = round(self.h.distance(cross_point, self.image_center), 0)
+        self.roll_drift = -round(self.h.distance_non_abs(cross_point, self.image_center), 0)
 
     def calculate_yaw_drift(self):
         lines = self.lines
@@ -246,7 +246,7 @@ class Eyes:
         self.correct_yaw = round(degrees(atan2(yDiff, xDiff)), 0)
 
         yaw_drift = round(self.correct_yaw - self.heading, 0)
-        self.yaw_drift = -yaw_drift
+        self.yaw_drift = yaw_drift
 
     def calculate_meters_in_view(self):
         self.meters_front = self.altitude * math.atan(85 / 2)
