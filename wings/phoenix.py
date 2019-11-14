@@ -96,7 +96,7 @@ class Phoenix:
 
         stage_thee_end = time.time() + self.start_moving_time
 
-        self.pitch_angle = -2.7
+        self.pitch_angle = -1.7
         while time.time() < stage_thee_end:
             self.gather_info()
             self.altitude_holder()
@@ -104,7 +104,7 @@ class Phoenix:
             time.sleep(UPDATE_INTERVAL)
 
         print("Starting stage FOUR 'AI'")
-
+        self.pitch_angle = -3.5
         while self.vehicle.mode != "LAND":
             start = time.time()
             if not self.fcq.empty():
