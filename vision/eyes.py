@@ -199,7 +199,7 @@ class Eyes:
             newline = Line((cx, cy), point1, point2, self.image_center)
             newline.angle = degrees(atan2(vya, vxa))# * -1
 
-            if self.heading is not None and -30 < self.heading - newline.angle < 30:
+            if self.heading is not None and -40 < self.heading - newline.angle < 40:
                 lines.append(newline)
             else:
                 bad_lines.append(newline)
@@ -225,10 +225,12 @@ class Eyes:
 
     def calculate_yaw_drift(self):
         lines = self.lines
+        # lines_ahead = self.lines
         lines_ahead = [l for l in lines if l.guidepoint[1] <= self.image_center[1]]
+        lines_behind = [l for l in lines if l.guidepoint[1] > self.image_center[1]]
         self.lines_ahead = lines_ahead
 
-        if len(lines_ahead) < 2:
+        if len(lines_ahead) < 1 or len(lines_behind) < 1:
             # print("No ahead lines found, nothing todo here ")
             self.yaw_drift = 0
             self.best_course = None
@@ -236,16 +238,15 @@ class Eyes:
 
         lines_ahead.sort(key=lambda l: l.centerdistance)
 
-        fstart = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
-        fend = (-lines_ahead[1].guidepoint[1], lines_ahead[1].guidepoint[0])
+        fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
+        fend = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
         xDiff = fend[0] - fstart[0]
         yDiff = fend[1] - fstart[1]
 
         self.correct_yaw = round(degrees(atan2(yDiff, xDiff)), 0)
 
         yaw_drift = round(self.correct_yaw - self.heading, 0)
-
-        self.yaw_drift = yaw_drift
+        self.yaw_drift = -yaw_drift
 
     def calculate_meters_in_view(self):
         self.meters_front = self.altitude * math.atan(85 / 2)
