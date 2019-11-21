@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 from vision.eyes import Eyes
 from wings.phoenix import Phoenix
 from vision.eyes import Eyes

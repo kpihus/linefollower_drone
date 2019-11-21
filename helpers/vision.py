@@ -38,7 +38,6 @@ class Helpers:
         if pt_1[0] - pt_2[0] == 0:
             return 0
         sign = (pt_1[0] - pt_2[0]) / abs(pt_1[0] - pt_2[0])
-        print("pts", pt_1[0], pt_2[0])
         return np.linalg.norm(pt_1 - pt_2) * sign
 
     def closest_point_to(self, target, lines):
@@ -50,3 +49,19 @@ class Helpers:
                 closest = l
 
         return closest
+
+    def map_values(value, inMin, inMax, outMin, outMax):
+        if value < inMin:
+            value = inMin
+
+        if value > inMax:
+            value = inMax
+        # Figure out how 'wide' each range is
+        leftSpan = inMax - inMin
+        rightSpan = outMax - outMin
+
+        # Convert the left range into a 0-1 range (float)
+        valueScaled = float(value - inMin) / float(leftSpan)
+
+        # Convert the 0-1 range into a value in the right range.
+        return outMin + (valueScaled * rightSpan)

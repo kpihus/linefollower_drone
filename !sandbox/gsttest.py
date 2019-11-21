@@ -1,57 +1,19 @@
-from multiprocessing import Process
 
-import cv2
+def mapValues(value, inMin, inMax, outMin, outMax):
+    if value < inMin:
+        value = inMin
 
-def send():
-    cap_send = cv2.VideoCapture(0)
-    out_send = cv2.VideoWriter('appsrc ! videoconvert ! x264enc tune=zerolatency bitrate=500 speed-preset=superfast ! rtph264pay ! udpsink host=127.0.0.1 port=5000',cv2.CAP_GSTREAMER,0, 20, (320,240), True)
+    if value > inMax:
+        value = inMax
+    # Figure out how 'wide' each range is
+    leftSpan = inMax - inMin
+    rightSpan = outMax - outMin
 
-    if not cap_send.isOpened() or not out_send.isOpened():
-        print('VideoCapture or VideoWriter not opened')
-        exit(0)
+    # Convert the left range into a 0-1 range (float)
+    valueScaled = float(value - inMin) / float(leftSpan)
 
-    while True:
-        ret,frame = cap_send.read()
+    # Convert the 0-1 range into a value in the right range.
+    return outMin + (valueScaled * rightSpan)
 
-        if not ret:
-            print('empty frame')
-            break
 
-        out_send.write(frame)
-
-        cv2.imshow('send', frame)
-        if cv2.waitKey(1)&0xFF == ord('q'):
-            break
-
-    cap_send.release()
-    out_send.release()
-
-def receive():
-    cap_receive = cv2.VideoCapture('udpsrc port=5000 caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264, payload=(int)96" ! rtph264depay ! decodebin ! videoconvert ! appsink', cv2.CAP_GSTREAMER)
-
-    if not cap_receive.isOpened():
-        print('VideoCapture not opened')
-        exit(0)
-
-    while True:
-        ret,frame = cap_receive.read()
-
-        if not ret:
-            print('empty frame')
-            break
-
-        cv2.imshow('receive', frame)
-        if cv2.waitKey(1)&0xFF == ord('q'):
-            break
-
-    #cap_receive.release()
-
-if __name__ == '__main__':
-    s = Process(target=send)
-    r = Process(target=receive)
-    s.start()
-    r.start()
-    s.join()
-    r.join()
-
-    cv2.destroyAllWindows()
+print(mapValues(2200, 1000, 2000, 0, 255))

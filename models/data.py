@@ -1,6 +1,6 @@
-
 class FlightData:
-    def __init__(self, timestamp=0.0, altitude=0.0, pitch=0.0, roll=0.0, yaw=0.0, north=0.0, east=0.0, speed=0.0):
+    def __init__(self, timestamp=0.0, altitude=0.0, pitch=0.0, roll=0.0, yaw=0.0, north=0.0, east=0.0, speed=0.0,
+                 thres_val=0, thres_max=0):
         self.timestamp = timestamp
         self.altitude = altitude
         self.pitch = pitch
@@ -9,6 +9,8 @@ class FlightData:
         self.north = north
         self.east = east
         self.speed = speed
+        self.thres_val = thres_val
+        self.thres_max = thres_max
 
 
 class FlightCommands:

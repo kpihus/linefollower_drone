@@ -2,7 +2,7 @@ from dronekit import connect, Command, LocationGlobal, VehicleMode
 from simple_pid import PID
 from models.data import FlightData
 from pymavlink import mavutil
-import time, sys, argparse, math, threading
+import time, sys, argparse, math, threading, os
 
 TARGET_ALTITUDE = 1.5
 UPDATE_INTERVAL = 0.01
@@ -28,7 +28,8 @@ def to_quaternion(roll=0.0, pitch=0.0, yaw=0.0):
 
 class Phoenix:
     def __init__(self, flight_params=None, flight_commands=None):
-        self.connection_string = '127.0.0.1:14540'
+        self.platform = os.getenv('PLATFORM')
+        self.connection_string = os.getenv('CONNECTION_STRING')
         self.vehicle = None
         self.last_heartbeat = None
         self.fpq = flight_params
@@ -55,6 +56,8 @@ class Phoenix:
         self.takeoff_stage_time = 2
         self.start_moving_time = 2
 
+        print("Current platform:", self.platform)
+
     def loop(self):
         """
             The loop will go through few stages,
@@ -69,17 +72,21 @@ class Phoenix:
         :return:
         """
         self.connect()
-        self.vehicle.mode = VehicleMode("LOITER")
+        if self.platform == 'SIMU':
+            self.vehicle.mode = VehicleMode("LOITER")
 
         print("Starting stage ONE 'arming'")
 
         # stage one, wait for arming
         while not self.vehicle.armed:
             print(" Waiting for arming..." + str(self.vehicle.armed))
-            self.vehicle.armed = True
+            if self.platform == 'SIMU':
+                self.vehicle.armed = True
             time.sleep(1)
 
-        self.vehicle.mode = VehicleMode("OFFBOARD")
+        if self.platform == 'SIMU':
+            self.vehicle.mode = VehicleMode("OFFBOARD")
+
         print("Starting stage TWO 'takeoff'")
 
         # setup PIDs
@@ -104,7 +111,7 @@ class Phoenix:
             time.sleep(UPDATE_INTERVAL)
 
         print("Starting stage FOUR 'AI'")
-        self.pitch_angle = -3.5
+        self.pitch_angle = -float(os.getenv('SPEED'))
         while self.vehicle.mode != "LAND":
             start = time.time()
             if not self.fcq.empty():
@@ -134,9 +141,10 @@ class Phoenix:
     def setup_pids(self):
         # ------------------- THRUST
         # Setup PID parameters (NOTE: These are tested values, do not randomly change these)
-        thrust_kp = 0.35
-        thrust_ki = 0.2
-        thrust_kd = 0.35
+        thrust_kp = float(os.getenv('THRUST_KP'))
+        thrust_ki = float(os.getenv('THRUST_KI'))
+        thrust_kd = float(os.getenv('THRUST_KD'))
+        print(thrust_kp, thrust_ki, thrust_kd)
 
         # Setup PID
         self.thrust_pid = PID(thrust_kp, thrust_ki, thrust_kd, setpoint=TARGET_ALTITUDE)
@@ -145,9 +153,9 @@ class Phoenix:
 
         # ------------------- ROLL
 
-        roll_kp = 0.05
-        roll_ki = 0.001
-        roll_kd = 0.01
+        roll_kp = float(os.getenv('ROLL_KP'))
+        roll_ki = float(os.getenv('ROLL_KI'))
+        roll_kd = float(os.getenv('ROLL_KD'))
 
         # PID for roll
         self.roll_pid = PID(roll_kp, roll_ki, roll_kd, setpoint=0)
@@ -155,9 +163,9 @@ class Phoenix:
         self.roll_pid.output_limits = (-15, 15)  # roll angle should only be between 5 / -5
 
         # ------------------- YAW
-        yaw_kp = 0.5
-        yaw_ki = 0.05 #0.2
-        yaw_kd = 0.0 #0.3
+        yaw_kp = float(os.getenv('YAW_KP'))
+        yaw_ki = float(os.getenv('YAW_KI'))
+        yaw_kd = float(os.getenv('YAW_KD'))
 
         # PID for yaw
         self.yaw_pid = PID(yaw_kp, yaw_ki, yaw_kd, setpoint=0)
@@ -172,7 +180,9 @@ class Phoenix:
         north = self.vehicle.location.local_frame.north
         east = self.vehicle.location.local_frame.east
         speed = self.vehicle.groundspeed
-        self.flightData = FlightData(time.time(), altitude, pitch, roll, yaw, north, east, speed)
+        thres_val = self.vehicle.channels['7']
+        thres_max = self.vehicle.channels['8']
+        self.flightData = FlightData(time.time(), altitude, pitch, roll, yaw, north, east, speed, thres_val, thres_max)
         self.fpq.put(self.flightData)
 
     def altitude_holder(self):
@@ -227,7 +237,7 @@ class Phoenix:
         if yaw_angle is None:
             yaw_angle = 0.0
 
-        print("New attitude", roll_angle, pitch_angle, yaw_angle)
+        # print("New attitude", roll_angle, pitch_angle, yaw_angle)
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude

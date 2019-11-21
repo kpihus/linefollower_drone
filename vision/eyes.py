@@ -10,6 +10,7 @@
 import cv2
 import math
 import time
+import os
 import numpy as np
 from math import atan2, degrees
 import matplotlib.pyplot as plt
@@ -26,12 +27,15 @@ class Eyes:
         self.capture_src = 'udpsrc buffer-size=24000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)640, height=(string)640,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=60/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
+        self.img_thres = None
         self.cap = None
         self.image_center = (0, 0)
         self.sd = ShapeDetector()
         self.h = Helpers()
         self.image_cols = 0
         self.image_rows = 0
+        self.thres_val = int(os.getenv('THRES_VAL'))
+        self.thres_max = int(os.getenv('THRES_MAX'))
         self.conts = None
         self.lines = None
         self.bad_lines = None
@@ -62,6 +66,7 @@ class Eyes:
 
         self.points1 = []
 
+
     def start_capture(self):
         print("Starting video capture")
         self.cap = cv2.VideoCapture(self.capture_src, self.capture_opts)
@@ -80,6 +85,10 @@ class Eyes:
                     self.yaw = data.yaw
                     self.altitude = data.altitude
                     self.speed = data.speed
+                    self.thres_val = self.h.map_values(data.thres_val, inMin=1000, inMax=2000, outMin=0, outMax=255) \
+                        if not (data.thres_val is None) and data.thres_val > 0 else self.thres_val
+                    self.thres_max = self.h.map_values(data.thres_max, inMin=1000, inMax=2000, outMin=0, outMax=255) \
+                        if not (data.thres_max is None) and data.thres_max > 0 else self.thres_max
 
                     # update location only when moving
                     if self.speed >= 0.1:
@@ -98,6 +107,7 @@ class Eyes:
 
     def fix_yaw(self, yaw):
         pass
+
     def process_image(self):
         frame = cv2.imread('testpic_cross.png')
         self.process_frame(frame)
@@ -111,9 +121,7 @@ class Eyes:
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        # cv2.imshow('blurred', blurred)
-        thresh = cv2.threshold(blurred, 230, 255, cv2.THRESH_BINARY)[1]
-        cv2.imshow('threh', thresh)
+        thresh = cv2.threshold(blurred, self.thres_val, self.thres_max, cv2.THRESH_BINARY)[1]
         self.conts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         rows, cols = frame.shape[:2]  # frame dimensions
@@ -151,7 +159,7 @@ class Eyes:
         if len(self.east) >= 10:
             self.east.pop(0)
         self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.roll_drift))
-        self.draw_image(frame)
+        self.draw_image(frame, thresh)
 
     def process_contours(self):
         sd = ShapeDetector()
@@ -252,7 +260,7 @@ class Eyes:
         self.meters_front = self.altitude * math.atan(85 / 2)
         # self.pixels_per_m = self.image_rows / 2 / self.meters_front
 
-    def draw_image(self, frame):
+    def draw_image(self, frame, thres):
         cv2.circle(frame, self.image_center, 7, (200, 100, 255), -1)  # Image center point
         try:
             cv2.drawContours(frame, self.conts[0], -1, (255, 0, 0), 1)
@@ -329,19 +337,19 @@ class Eyes:
         except:
             pass
 
-        try:
-            cv2.putText(frame, "north " + str(self.north[-1]), (10, 190),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        (255, 255, 100), 2)
-        except:
-            pass
-
-        try:
-            cv2.putText(frame, "east " + str(self.east[-1]), (10, 210),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        (255, 255, 100), 2)
-        except:
-            pass
+        # try:
+        #     cv2.putText(frame, "north " + str(self.north[-1]), (10, 190),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+        #                 (255, 255, 100), 2)
+        # except:
+        #     pass
+        #
+        # try:
+        #     cv2.putText(frame, "east " + str(self.east[-1]), (10, 210),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+        #                 (255, 255, 100), 2)
+        # except:
+        #     pass
 
         try:
             cv2.putText(frame, "Speed " + str(round(self.speed, 3)) + ' m/s', (10, 240),
@@ -389,7 +397,8 @@ class Eyes:
         except:
             pass
 
-        cv2.imshow('image', frame)
+        vis = np.concatenate((frame, thres), axis=1)
+        cv2.imshow('image', vis)
         if cv2.waitKey(1) & 0XFF == ord('q'):
             self.cap.release()
             cv2.destroyAllWindows()
