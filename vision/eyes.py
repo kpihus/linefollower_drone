@@ -70,10 +70,12 @@ class Eyes:
 
 
     def start_capture(self):
+        print('The beginning')
         if os.getenv('PLATFORM') == 'SIMU':
             self.capture_simu()
         elif os.getenv('PLATFORM') == 'BIRD':
-            self.capture_pi()
+            # self.capture_pi()
+            pass
         else:
             print('Unknown platform')
             exit()
@@ -84,18 +86,22 @@ class Eyes:
         camera.framerate = 32
         raw_capture = PiRGBArray(camera, size=(640, 480))
 
-        for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
+        for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
+            frame = image.array
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
 
     def capture_simu(self):
         print("Starting video capture")
         self.cap = cv2.VideoCapture(self.capture_src, self.capture_opts)
+        print("got cap")
         if not self.cap.isOpened():
             print("VideoCapture not opened")
             exit(-1)
+        print("Cap is opened")
 
         while True:
+            print("Got frame")
             # get some pyshical attributes
             if not self.fpq.empty():
                 data = self.fpq.get()
@@ -139,7 +145,6 @@ class Eyes:
                 cv2.destroyAllWindows()
 
     def process_frame(self, frame):
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         thresh = cv2.threshold(blurred, self.thres_val, self.thres_max, cv2.THRESH_BINARY)[1]
@@ -282,6 +287,7 @@ class Eyes:
         # self.pixels_per_m = self.image_rows / 2 / self.meters_front
 
     def draw_image(self, frame, thres):
+        print("Drawing")
         cv2.circle(frame, self.image_center, 7, (200, 100, 255), -1)  # Image center point
         try:
             cv2.drawContours(frame, self.conts[0], -1, (255, 0, 0), 1)
@@ -419,7 +425,9 @@ class Eyes:
             pass
 
         # vis = np.concatenate((frame, thres), axis=1)
-        frame = cv2.resize(frame, (640, 480))
+        # frame = cv2.resize(frame, (640, 480))
+        # print("Showing image")
+        # cv2.imshow("image", frame)
         encoded, buffer = cv2.imencode('.jpg', frame)
         jpg_as_text = base64.b64encode(buffer)
         self.footage_socket.send(jpg_as_text)
