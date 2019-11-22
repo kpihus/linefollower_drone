@@ -74,7 +74,7 @@ class Eyes:
         if os.getenv('PLATFORM') == 'SIMU':
             self.capture_simu()
         elif os.getenv('PLATFORM') == 'BIRD':
-            # self.capture_pi()
+            self.capture_pi()
             pass
         else:
             print('Unknown platform')
