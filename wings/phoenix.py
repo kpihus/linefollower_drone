@@ -132,7 +132,7 @@ class Phoenix:
 
     def connect(self):
         print("Connecting to Bird")
-        vehicle = connect(self.connection_string, wait_ready=True)
+        vehicle = connect(self.connection_string, wait_ready=True, baud=int(os.getenv('BAUD')))
         print(" Type: %s" % vehicle._vehicle_type)
         print(" Armed: %s" % vehicle.armed)
         print(" System status: %s" % vehicle.system_status.state)
