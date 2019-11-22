@@ -15,6 +15,7 @@ while True:
     try:
         grabbed, frame = camera.read()  # grab the current frame
         frame = cv2.resize(frame, (640, 480))  # resize the frame
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
         now = time.time()
         encoded, buffer = cv2.imencode('.jpg', frame)
         jpg_as_text = base64.b64encode(buffer)
