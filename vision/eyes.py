@@ -90,6 +90,7 @@ class Eyes:
             frame = image.array
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
+            raw_capture.truncate(0)
 
     def capture_simu(self):
         print("Starting video capture")
@@ -148,6 +149,7 @@ class Eyes:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         cv2.imshow('blurred', blurred)
+        return
         thresh = cv2.threshold(blurred, self.thres_val, self.thres_max, cv2.THRESH_BINARY)[1]
         self.conts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
