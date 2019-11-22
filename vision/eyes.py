@@ -1,19 +1,17 @@
-# parser: rtph264depay
-# _parserName = "h264parse";
-# _swDecoderName = "avdec_h264";
-# for raw video https://stackoverflow.com/questions/39492658/working-example-of-rtpvrawpay-in-gstreamer
-# gstreamer tutorial http://www.einarsundgren.se/gstreamer-basic-real-time-streaming-tutorial/
-# capture latest frame https://stackoverflow.com/questions/43665208/how-to-get-the-latest-frame-from-capture-device-camera-in-opencv-python#targetText=Your%20program%20should%20be%20able,last%20frame%20in%20the%20queue.&targetText=As%20per%20OpenCV%20reference%2C%20vidcap.read()%20returns%20a%20bool.
-# appsink properties https://gstreamer.freedesktop.org/documentation/app/appsink.html?gi-language=c#properties
+import os
 
+if os.getenv('PLATFORM') == 'BIRD':
+    from picamera.array import PiRGBArray
+    from picamera import PiCamera
 
 import cv2
 import math
 import time
-import os
+
 import numpy as np
 from math import atan2, degrees
-import matplotlib.pyplot as plt
+import base64
+import zmq
 
 from helpers.vision import Helpers
 from vision.shape import Line
@@ -66,8 +64,31 @@ class Eyes:
 
         self.points1 = []
 
+        context = zmq.Context()
+        self.footage_socket = context.socket(zmq.PUB)
+        self.footage_socket.connect('tcp://localhost:5555')
+
 
     def start_capture(self):
+        if os.getenv('PLATFORM') == 'SIMU':
+            self.capture_simu()
+        elif os.getenv('PLATFORM') == 'BIRD':
+            self.capture_pi()
+        else:
+            print('Unknown platform')
+            exit()
+
+    def capture_pi(self):
+        camera = PiCamera()
+        camera.resolution = (640, 480)
+        camera.framerate = 32
+        raw_capture = PiRGBArray(camera, size=(640, 480))
+
+        for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
+            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.process_frame(frame)
+
+    def capture_simu(self):
         print("Starting video capture")
         self.cap = cv2.VideoCapture(self.capture_src, self.capture_opts)
         if not self.cap.isOpened():
@@ -397,8 +418,9 @@ class Eyes:
         except:
             pass
 
-        vis = np.concatenate((frame, thres), axis=1)
-        cv2.imshow('image', vis)
-        if cv2.waitKey(1) & 0XFF == ord('q'):
-            self.cap.release()
-            cv2.destroyAllWindows()
+        # vis = np.concatenate((frame, thres), axis=1)
+        frame = cv2.resize(frame, (640, 480))
+        encoded, buffer = cv2.imencode('.jpg', frame)
+        jpg_as_text = base64.b64encode(buffer)
+        self.footage_socket.send(jpg_as_text)
+
