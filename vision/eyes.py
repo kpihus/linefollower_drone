@@ -12,7 +12,7 @@ from math import atan2, degrees
 import base64
 import zmq
 
-from vision.helpers import Helpers
+from helpers.vision import Helpers
 from vision.shape import Line
 from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
