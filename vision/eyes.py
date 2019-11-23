@@ -198,7 +198,7 @@ class Eyes:
         lines = []
         bad_lines = []
         points1 = []
-        for c in self.conts[0]:
+        for c in self.conts[1]:
             shape = sd.detect(c)
             if shape == "rectangle":
                 moments = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
