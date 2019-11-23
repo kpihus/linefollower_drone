@@ -89,7 +89,6 @@ class Eyes:
         # while True:
         #     camera.capture(raw_capture, format="bgr")
         #     image = raw_capture.array
-        #     cv2.imshow('orig', image)
         #     #frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         #     self.process_frame(image)
         #     raw_capture.truncate(0)
@@ -188,7 +187,6 @@ class Eyes:
             self.east.pop(0)
         self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.roll_drift))
         self.draw_image(frame)
-        cv2.imshow('final', frame)
 
     def process_contours(self):
         sd = ShapeDetector()
