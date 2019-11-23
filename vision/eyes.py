@@ -85,6 +85,7 @@ class Eyes:
         camera.resolution = (640, 480)
         camera.framerate = 32
         raw_capture = PiRGBArray(camera, size=(640, 480))
+        time.sleep(0.3)
 
         for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
             self.flight_info()
