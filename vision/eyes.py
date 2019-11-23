@@ -280,7 +280,6 @@ class Eyes:
         # self.pixels_per_m = self.image_rows / 2 / self.meters_front
 
     def draw_image(self, frame, thres):
-        print("Drawing")
         cv2.circle(frame, self.image_center, 7, (200, 100, 255), -1)  # Image center point
         try:
             cv2.drawContours(frame, self.conts[0], -1, (255, 0, 0), 1)
@@ -401,7 +400,7 @@ class Eyes:
                 pass
 
         time_now = time.time()
-
+        print("TIME", str(round(time_now - self.flight_params_time, 4)))
         cv2.putText(frame, "Time " + str(round(time_now - self.flight_params_time, 4)) + " s", (10, 300),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 100), 2)
@@ -418,8 +417,8 @@ class Eyes:
             pass
 
         # vis = np.concatenate((frame, thres), axis=1)
-        # frame = cv2.resize(frame, (640, 480))
-        cv2.imshow("image", frame)
+        resized = cv2.resize(frame, (320, 240))
+        cv2.imshow("image", resized)
         # encoded, buffer = cv2.imencode('.jpg', frame)
         # jpg_as_text = base64.b64encode(buffer)
         # self.footage_socket.send(jpg_as_text)
