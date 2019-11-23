@@ -1,8 +1,7 @@
 import os
 
-if os.getenv('PLATFORM') == 'BIRD':
-    from picamera.array import PiRGBArray
-    from picamera import PiCamera
+from picamera.array import PiRGBArray
+from picamera import PiCamera
 
 import cv2
 import math
@@ -83,7 +82,7 @@ class Eyes:
     def capture_pi(self):
         camera = PiCamera()
         camera.resolution = (640, 480)
-        # camera.framerate = 32
+        camera.framerate = 32
         raw_capture = PiRGBArray(camera)
         time.sleep(0.3)
 
@@ -96,7 +95,7 @@ class Eyes:
         #     raw_capture.truncate(0)
 
         for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
-            self.flight_info()
+            #self.flight_info()
             frame = image.array
             # frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             # self.process_frame(frame)
