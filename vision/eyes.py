@@ -91,8 +91,8 @@ class Eyes:
             camera.capture(raw_capture, format="bgr")
             image = raw_capture.array
             cv2.imshow('orig', image)
-            frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            self.process_frame(frame)
+            #frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.process_frame(image)
 
         # for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
         #     self.flight_info()
