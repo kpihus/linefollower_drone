@@ -127,10 +127,10 @@ class Eyes:
                 self.yaw = data.yaw
                 self.altitude = data.altitude
                 self.speed = data.speed
-                self.thres_val = self.h.map_values(data.thres_val, inMin=1000, inMax=2000, outMin=0, outMax=255) \
-                    if not (data.thres_val is None) and data.thres_val > 0 else self.thres_val
-                self.thres_max = self.h.map_values(data.thres_max, inMin=1000, inMax=2000, outMin=0, outMax=255) \
-                    if not (data.thres_max is None) and data.thres_max > 0 else self.thres_max
+                # self.thres_val = self.h.map_values(data.thres_val, inMin=1000, inMax=2000, outMin=0, outMax=255) \
+                #     if not (data.thres_val is None) and data.thres_val > 0 else self.thres_val
+                # self.thres_max = self.h.map_values(data.thres_max, inMin=1000, inMax=2000, outMin=0, outMax=255) \
+                #     if not (data.thres_max is None) and data.thres_max > 0 else self.thres_max
 
                 # update location only when moving
                 if self.speed >= 0.1:
@@ -178,7 +178,8 @@ class Eyes:
         if len(self.east) >= 10:
             self.east.pop(0)
         self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.roll_drift))
-        self.draw_image(frame, thresh)
+        self.draw_image(frame)
+        cv2.imshow('final', frame)
 
     def process_contours(self):
         sd = ShapeDetector()
@@ -187,6 +188,7 @@ class Eyes:
         points1 = []
         for c in self.conts[1]:
             shape = sd.detect(c)
+            print("Shape", shape)
             if shape == "rectangle":
                 moments = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
                 if moments["m00"] == 0:
@@ -279,7 +281,7 @@ class Eyes:
         self.meters_front = self.altitude * math.atan(85 / 2)
         # self.pixels_per_m = self.image_rows / 2 / self.meters_front
 
-    def draw_image(self, frame, thres):
+    def draw_image(self, frame):
         cv2.circle(frame, self.image_center, 7, (200, 100, 255), -1)  # Image center point
         try:
             cv2.drawContours(frame, self.conts[0], -1, (255, 0, 0), 1)
@@ -415,11 +417,3 @@ class Eyes:
                         (255, 255, 255), 2)
         except:
             pass
-
-        # vis = np.concatenate((frame, thres), axis=1)
-        resized = cv2.resize(frame, (320, 240))
-        # cv2.imshow("image", resized)
-        encoded, buffer = cv2.imencode('.jpg', resized)
-        jpg_as_text = base64.b64encode(buffer)
-        self.footage_socket.send(jpg_as_text)
-
