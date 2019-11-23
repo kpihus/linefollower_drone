@@ -87,6 +87,7 @@ class Eyes:
         raw_capture = PiRGBArray(camera, size=(640, 480))
 
         for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
+            self.flight_info()
             frame = image.array
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
@@ -103,25 +104,7 @@ class Eyes:
 
         while True:
             print("Got frame")
-            # get some pyshical attributes
-            if not self.fpq.empty():
-                data = self.fpq.get()
-                if data.timestamp > self.flight_params_time:
-                    self.flight_params_time = data.timestamp
-                    self.pitch = data.pitch
-                    self.roll = data.roll
-                    self.yaw = data.yaw
-                    self.altitude = data.altitude
-                    self.speed = data.speed
-                    self.thres_val = self.h.map_values(data.thres_val, inMin=1000, inMax=2000, outMin=0, outMax=255) \
-                        if not (data.thres_val is None) and data.thres_val > 0 else self.thres_val
-                    self.thres_max = self.h.map_values(data.thres_max, inMin=1000, inMax=2000, outMin=0, outMax=255) \
-                        if not (data.thres_max is None) and data.thres_max > 0 else self.thres_max
-
-                    # update location only when moving
-                    if self.speed >= 0.1:
-                        self.north.append(data.north)
-                        self.east.append(data.east)
+            self.flight_info()
 
             self.cap.grab()
 
@@ -132,6 +115,27 @@ class Eyes:
             # rotate image 90 deg, because of landscape camera on drone
             frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
+
+    def flight_info(self):
+        # get some pyshical attributes
+        if not self.fpq.empty():
+            data = self.fpq.get()
+            if data.timestamp > self.flight_params_time:
+                self.flight_params_time = data.timestamp
+                self.pitch = data.pitch
+                self.roll = data.roll
+                self.yaw = data.yaw
+                self.altitude = data.altitude
+                self.speed = data.speed
+                self.thres_val = self.h.map_values(data.thres_val, inMin=1000, inMax=2000, outMin=0, outMax=255) \
+                    if not (data.thres_val is None) and data.thres_val > 0 else self.thres_val
+                self.thres_max = self.h.map_values(data.thres_max, inMin=1000, inMax=2000, outMin=0, outMax=255) \
+                    if not (data.thres_max is None) and data.thres_max > 0 else self.thres_max
+
+                # update location only when moving
+                if self.speed >= 0.1:
+                    self.north.append(data.north)
+                    self.east.append(data.east)
 
     def fix_yaw(self, yaw):
         pass
@@ -146,10 +150,9 @@ class Eyes:
                 cv2.destroyAllWindows()
 
     def process_frame(self, frame):
+        print("Process freame")
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        cv2.imshow('blurred', blurred)
-        return
         thresh = cv2.threshold(blurred, self.thres_val, self.thres_max, cv2.THRESH_BINARY)[1]
         self.conts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
