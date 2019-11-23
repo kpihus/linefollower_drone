@@ -17,6 +17,10 @@ from vision.shape import Line
 from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
 
+context = zmq.Context()
+footage_socket = context.socket(zmq.PUB)
+footage_socket.connect('tcp://localhost:5555')
+
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 class Eyes:
@@ -267,6 +271,7 @@ class Eyes:
             return
 
         lines_ahead.sort(key=lambda l: l.centerdistance)
+        lines_behind.sort(key=lambda l: l.centerdistance)
 
 
         fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
@@ -421,6 +426,9 @@ class Eyes:
         except:
             pass
         cv2.imwrite("./images/image" + str(time.time()) + ".jpg", frame)
+        encoded, buffer = cv2.imencode('.jpg', frame)
+        jpg_as_text = base64.b64encode(buffer)
+        footage_socket.send(jpg_as_text)
 
 
 
