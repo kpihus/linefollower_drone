@@ -83,8 +83,8 @@ class Eyes:
     def capture_pi(self):
         camera = PiCamera()
         camera.resolution = (640, 480)
-        camera.framerate = 32
-        raw_capture = PiRGBArray(camera, size=(640, 480))
+        # camera.framerate = 32
+        raw_capture = PiRGBArray(camera)
         time.sleep(0.3)
 
         while True:
@@ -93,6 +93,7 @@ class Eyes:
             cv2.imshow('orig', image)
             #frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(image)
+            raw_capture.truncate(0)
 
         # for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
         #     self.flight_info()
