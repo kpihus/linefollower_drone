@@ -426,3 +426,7 @@ class Eyes:
                         (255, 255, 255), 2)
         except:
             pass
+
+if __name__=="__main__":
+    e = Eyes()
+    e.start_capture()
