@@ -79,6 +79,7 @@ class Phoenix:
 
         # stage one, wait for arming
         while not self.vehicle.armed:
+            self.gather_info()
             print(" Waiting for arming..." + str(self.vehicle.armed))
             if self.platform == 'SIMU':
                 self.vehicle.armed = True

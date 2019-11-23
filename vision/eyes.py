@@ -137,20 +137,7 @@ class Eyes:
                     self.north.append(data.north)
                     self.east.append(data.east)
 
-    def fix_yaw(self, yaw):
-        pass
-
-    def process_image(self):
-        frame = cv2.imread('testpic_cross.png')
-        self.process_frame(frame)
-        while True:
-            # do nothing for a while
-            if cv2.waitKey(1) & 0XFF == ord('q'):
-                self.cap.release()
-                cv2.destroyAllWindows()
-
     def process_frame(self, frame):
-        print("Process freame")
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         thresh = cv2.threshold(blurred, self.thres_val, self.thres_max, cv2.THRESH_BINARY)[1]
@@ -432,7 +419,6 @@ class Eyes:
 
         # vis = np.concatenate((frame, thres), axis=1)
         # frame = cv2.resize(frame, (640, 480))
-        print("Showing image")
         cv2.imshow("image", frame)
         # encoded, buffer = cv2.imencode('.jpg', frame)
         # jpg_as_text = base64.b64encode(buffer)
