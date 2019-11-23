@@ -38,6 +38,7 @@ class Eyes:
         self.bad_lines = None
         self.lines_ahead = None
         self.roll_line = None
+        self.line_length = 0
         self.best_course = None
         self.start_time = 0
         self.roll_drift = 0
@@ -85,13 +86,6 @@ class Eyes:
         camera.framerate = 32
         raw_capture = PiRGBArray(camera)
         time.sleep(0.3)
-
-        # while True:
-        #     camera.capture(raw_capture, format="bgr")
-        #     image = raw_capture.array
-        #     #frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        #     self.process_frame(image)
-        #     raw_capture.truncate(0)
 
         for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
             self.flight_info()
@@ -274,11 +268,13 @@ class Eyes:
 
         lines_ahead.sort(key=lambda l: l.centerdistance)
 
+
         fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
         fend = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
         xDiff = fend[0] - fstart[0]
         yDiff = fend[1] - fstart[1]
 
+        self.line_length = self.h.distance(fstart, fend)
         self.correct_yaw = round(degrees(atan2(yDiff, xDiff)), 0)
 
         yaw_drift = round(self.correct_yaw - self.heading, 0)
@@ -372,12 +368,12 @@ class Eyes:
         # except:
         #     pass
         #
-        # try:
-        #     cv2.putText(frame, "east " + str(self.east[-1]), (10, 210),
-        #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-        #                 (255, 255, 100), 2)
-        # except:
-        #     pass
+        try:
+            cv2.putText(frame, "Length " + str(self.line_length), (10, 210),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (255, 255, 100), 2)
+        except:
+            pass
 
         try:
             cv2.putText(frame, "Speed " + str(round(self.speed, 3)) + ' m/s', (10, 240),
