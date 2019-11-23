@@ -64,9 +64,9 @@ class Eyes:
 
         self.points1 = []
 
-        # context = zmq.Context()
-        # self.footage_socket = context.socket(zmq.PUB)
-        # self.footage_socket.connect('tcp://localhost:5555')
+        context = zmq.Context()
+        self.footage_socket = context.socket(zmq.PUB)
+        self.footage_socket.connect('tcp://localhost:5555')
 
 
     def start_capture(self):
@@ -418,8 +418,8 @@ class Eyes:
 
         # vis = np.concatenate((frame, thres), axis=1)
         resized = cv2.resize(frame, (320, 240))
-        cv2.imshow("image", resized)
-        # encoded, buffer = cv2.imencode('.jpg', frame)
-        # jpg_as_text = base64.b64encode(buffer)
-        # self.footage_socket.send(jpg_as_text)
+        # cv2.imshow("image", resized)
+        encoded, buffer = cv2.imencode('.jpg', resized)
+        jpg_as_text = base64.b64encode(buffer)
+        self.footage_socket.send(jpg_as_text)
 
