@@ -158,7 +158,7 @@ class Eyes:
         self.image_center = (int(cols / 2), int(rows / 2))
 
         # figure out flying direction (only if enough samples exists
-        if len(self.north) > 2 and len(self.east) > 2:
+        if len(self.north) > 10 and len(self.east) > 10:
             fstart = (self.north[0], self.east[0])
             fend = (self.north[-1], self.east[-1])
             xDiff = fend[0] - fstart[0]
@@ -180,10 +180,10 @@ class Eyes:
         # print("Rolldrift " + str(self.roll_drift)+ " | Yaw drift " + str(self.yaw_drift))
 
         # reset flight path history
-        if len(self.north) >= 10:
+        if len(self.north) >= 20:
             self.north.pop(0)
 
-        if len(self.east) >= 10:
+        if len(self.east) >= 20:
             self.east.pop(0)
         self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.roll_drift))
         self.draw_image(frame)
