@@ -1,7 +1,7 @@
 import os
-
-from picamera.array import PiRGBArray
-from picamera import PiCamera
+if os.getenv('PLATFORM') == 'BIRD':
+    from picamera.array import PiRGBArray
+    from picamera import PiCamera
 
 import cv2
 import math
@@ -95,11 +95,11 @@ class Eyes:
         #     raw_capture.truncate(0)
 
         for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
-            #self.flight_info()
+            self.flight_info()
             frame = image.array
-            # frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            # self.process_frame(frame)
-            cv2.imshow('orig', frame)
+            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.process_frame(frame)
+            #cv2.imshow('orig', frame)
             raw_capture.truncate(0)
 
     def capture_simu(self):
@@ -293,7 +293,7 @@ class Eyes:
     def draw_image(self, frame):
         cv2.circle(frame, self.image_center, 7, (200, 100, 255), -1)  # Image center point
         try:
-            cv2.drawContours(frame, self.conts[0], -1, (255, 0, 0), 1)
+            cv2.drawContours(frame, self.conts[1], -1, (255, 0, 0), 1)
         except:
             pass
 
@@ -426,6 +426,9 @@ class Eyes:
                         (255, 255, 255), 2)
         except:
             pass
+        cv2.imwrite("./images/image" + str(time.time()) + ".jpg", frame)
+
+
 
 if __name__=="__main__":
     e = Eyes()

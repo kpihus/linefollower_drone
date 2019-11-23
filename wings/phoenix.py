@@ -53,8 +53,8 @@ class Phoenix:
         self.setup_pids()
 
         # stage lengths in seconds
-        self.takeoff_stage_time = 2
-        self.start_moving_time = 2
+        self.takeoff_stage_time = 1
+        self.start_moving_time = 1
 
         print("Current platform:", self.platform)
 
@@ -87,6 +87,11 @@ class Phoenix:
 
         if self.platform == 'SIMU':
             self.vehicle.mode = VehicleMode("OFFBOARD")
+
+        while not self.vehicle.mode == 'OFFBOARD':
+            print('Waiting for offboard mode...')
+            self.gather_info()
+            time.sleep(UPDATE_INTERVAL)
 
         print("Starting stage TWO 'takeoff'")
 
