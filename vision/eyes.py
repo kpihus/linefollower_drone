@@ -12,7 +12,7 @@ from math import atan2, degrees
 import base64
 import zmq
 
-from helpers.vision import Helpers
+from vision.helpers import Helpers
 from vision.shape import Line
 from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
@@ -20,7 +20,7 @@ from models.data import FlightCommands
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 class Eyes:
-    def __init__(self, flight_params, flight_commands):
+    def __init__(self, flight_params = None, flight_commands = None):
         self.capture_src = 'udpsrc buffer-size=24000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)640, height=(string)640,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=60/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
@@ -127,7 +127,7 @@ class Eyes:
 
     def flight_info(self):
         # get some pyshical attributes
-        if not self.fpq.empty():
+        if not (self.fpq is None) and not self.fpq.empty():
             data = self.fpq.get()
             if data.timestamp > self.flight_params_time:
                 self.flight_params_time = data.timestamp
