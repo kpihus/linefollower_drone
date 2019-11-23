@@ -91,6 +91,7 @@ class Phoenix:
         while not self.vehicle.mode == 'OFFBOARD':
             print('Waiting for offboard mode...')
             self.gather_info()
+            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
             time.sleep(UPDATE_INTERVAL)
 
         print("Starting stage TWO 'takeoff'")
