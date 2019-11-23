@@ -87,12 +87,19 @@ class Eyes:
         raw_capture = PiRGBArray(camera, size=(640, 480))
         time.sleep(0.3)
 
-        for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
-            self.flight_info()
-            frame = image.array
-            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        while True:
+            camera.capture(raw_capture, format="bgr")
+            image = raw_capture.array
+            cv2.imshow('orig', image)
+            frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             self.process_frame(frame)
-            raw_capture.truncate(0)
+
+        # for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
+        #     self.flight_info()
+        #     frame = image.array
+        #     frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        #     self.process_frame(frame)
+        #     raw_capture.truncate(0)
 
     def capture_simu(self):
         print("Starting video capture")
