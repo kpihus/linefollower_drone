@@ -40,6 +40,7 @@ class Phoenix:
         self.yaw_drift = 0.0
         self.roll_drift = 0.0
 
+        self.altch_pid = None
         self.thrust_pid = None
         self.roll_pid = None
         self.yaw_pid = None
@@ -99,23 +100,22 @@ class Phoenix:
         # setup PIDs
         self.setup_pids()
 
+        self.vehicle.mode = VehicleMode("LOITER")
+        while self.flightData.altitude < TARGET_ALTITUDE:
+            self.gather_info()
+            ch3 = self.altch_pid(self.flightData.altitude)
+            self.vehicle.channels.overrides['3'] = ch3
+            time.sleep(UPDATE_INTERVAL)
+        self.vehicle.channels.overrides['3'] = None
+
+
         stage_two_end = time.time() + self.takeoff_stage_time
-        while time.time() < stage_two_end:
-            self.gather_info()
-            self.altitude_holder()
-            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
-            time.sleep(UPDATE_INTERVAL)
-
-        print("Starting stage THREE 'start moving'")
-
-        stage_thee_end = time.time() + self.start_moving_time
-
-        self.pitch_angle = -1.7
-        while time.time() < stage_thee_end:
-            self.gather_info()
-            self.altitude_holder()
-            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
-            time.sleep(UPDATE_INTERVAL)
+        # while time.time() < stage_two_end:
+        self.gather_info()
+        self.altitude_holder()
+        self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
+        self.vehicle.mode = VehicleMode("OFFBOARD")
+        time.sleep(UPDATE_INTERVAL)
 
         print("Starting stage FOUR 'AI'")
         self.pitch_angle = -float(os.getenv('SPEED'))
@@ -146,12 +146,21 @@ class Phoenix:
         self.vehicle = vehicle
 
     def setup_pids(self):
+        # Altitude by channel override
+        altch_kp = float(os.getenv('ALTCH_KP'))
+        altch_ki = float(os.getenv('ALTCH_KI'))
+        altch_kd = float(os.getenv('ALTCH_KD'))
+
+        self.altch_pid = PID(altch_kp, altch_ki, altch_kd, setpoint=TARGET_ALTITUDE)
+        self.altch_pid.sample_time = UPDATE_INTERVAL
+        self.altch_pid.output_limits = (1300, 2000)
+
+
         # ------------------- THRUST
         # Setup PID parameters (NOTE: These are tested values, do not randomly change these)
         thrust_kp = float(os.getenv('THRUST_KP'))
         thrust_ki = float(os.getenv('THRUST_KI'))
         thrust_kd = float(os.getenv('THRUST_KD'))
-        print(thrust_kp, thrust_ki, thrust_kd)
 
         # Setup PID
         self.thrust_pid = PID(thrust_kp, thrust_ki, thrust_kd, setpoint=TARGET_ALTITUDE)
@@ -167,7 +176,7 @@ class Phoenix:
         # PID for roll
         self.roll_pid = PID(roll_kp, roll_ki, roll_kd, setpoint=0)
         self.roll_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
-        self.roll_pid.output_limits = (-15, 15)  # roll angle should only be between 5 / -5
+        self.roll_pid.output_limits = (-2, 2)  # roll angle should only be between 5 / -5
 
         # ------------------- YAW
         yaw_kp = float(os.getenv('YAW_KP'))
@@ -197,12 +206,12 @@ class Phoenix:
         #print("new thrust", self.thrust)
 
     def roll_holder(self):
-        # self.roll_angle = self.roll_pid(self.roll_drift)
+        self.roll_angle = self.roll_pid(self.roll_drift)
         #print("new roll angle", self.roll_angle)
         pass
 
     def yaw_holder(self):
-        self.yaw_angle = math.degrees(self.vehicle.attitude.yaw) - self.yaw_pid(self.yaw_drift) + self.roll_pid(self.roll_drift)
+        self.yaw_angle = math.degrees(self.vehicle.attitude.yaw) - self.yaw_pid(self.yaw_drift)
         pass
 
     def land(self):
