@@ -242,7 +242,7 @@ class Eyes:
         self.lines = lines
 
     def calculate_roll_drift(self):
-        lines = self.lines
+        lines = self.lines + self.bad_lines if len(self.lines) + len(self.bad_lines) < 8 else self.lines
 
         if len(lines) < 2:
             # print("Not enough lines found, nothing to do here")
@@ -258,8 +258,8 @@ class Eyes:
         self.roll_drift = -round(self.h.distance_non_abs(cross_point, self.image_center), 0)
 
     def calculate_yaw_drift(self):
-        lines = self.lines
-        # lines_ahead = self.lines
+        lines = self.lines + self.bad_lines if len(self.lines) + len(self.bad_lines) < 8 else self.lines
+
         lines_ahead = [l for l in lines if l.guidepoint[1] <= self.image_center[1]]
         lines_behind = [l for l in lines if l.guidepoint[1] > self.image_center[1]]
         self.lines_ahead = lines_ahead
