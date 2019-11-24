@@ -10,21 +10,18 @@ import time
 import numpy as np
 from math import atan2, degrees
 import base64
-import zmq
 
 from helpers.vision import Helpers
 from vision.shape import Line
 from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
 
-context = zmq.Context()
-footage_socket = context.socket(zmq.PUB)
-footage_socket.connect('tcp://localhost:5555')
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 class Eyes:
-    def __init__(self, flight_params = None, flight_commands = None):
+    def __init__(self, flight_params = None, flight_commands = None, image_queue=None):
+        self.image_queue = image_queue
         self.capture_src = 'udpsrc buffer-size=24000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)640, height=(string)640,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=60/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
@@ -67,11 +64,6 @@ class Eyes:
         self.drive_dir = None
 
         self.points1 = []
-
-        context = zmq.Context()
-        self.footage_socket = context.socket(zmq.PUB)
-        self.footage_socket.connect('tcp://localhost:5555')
-
 
     def start_capture(self):
         print('The beginning')
@@ -193,7 +185,6 @@ class Eyes:
         points1 = []
         for c in self.conts[1]:
             shape = sd.detect(c)
-            print("Shape", shape)
             if shape == "rectangle":
                 moments = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
                 if moments["m00"] == 0:
@@ -213,12 +204,6 @@ class Eyes:
             if vxa < 0:
                 vxa = -vxa
                 vya = -vya
-
-            # if vxa > 0 and vya > 0:
-            #     vya = vya * -1
-            #
-            # if vxa < 0 and vya > 0:
-            #     vxa = vxa * -1
 
             lefty = int((-x * vy / vx) + y)
             righty = int(((self.image_cols - x) * vy / vx) + y)
@@ -410,7 +395,6 @@ class Eyes:
                 pass
 
         time_now = time.time()
-        print("TIME", str(round(time_now - self.flight_params_time, 4)))
         cv2.putText(frame, "Time " + str(round(time_now - self.flight_params_time, 4)) + " s", (10, 300),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (255, 255, 100), 2)
@@ -426,9 +410,11 @@ class Eyes:
         except:
             pass
         cv2.imwrite("./images/image" + str(time.time()) + ".jpg", frame)
-        encoded, buffer = cv2.imencode('.jpg', frame)
+        to_send = cv2.resize(frame, (600, 480))
+
+        encoded, buffer = cv2.imencode('.jpg', to_send)
         jpg_as_text = base64.b64encode(buffer)
-        footage_socket.send(jpg_as_text)
+        self.image_queue.put(jpg_as_text)
 
 
 
