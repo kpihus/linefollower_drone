@@ -8,6 +8,12 @@ from ears.ears import Ears
 from multiprocessing import Process
 from multiprocessing.managers import BaseManager
 from queue import LifoQueue
+import zmq
+import time
+
+context = zmq.Context()
+footage_socket = context.socket(zmq.PUB)
+footage_socket.connect('tcp://localhost:5555')
 
 
 class QueueManager(BaseManager):
@@ -23,15 +29,24 @@ if __name__ == "__main__":
 
     flight_params = manager.LifoQueue()
     flight_commands = manager.LifoQueue()
+    image_queue = manager.LifoQueue()
 
     phoenix = Phoenix(flight_params, flight_commands)
-    eyes = Eyes(flight_params, flight_commands)
+    eyes = Eyes(flight_params, flight_commands, image_queue)
 
     visual = Process(target=eyes.start_capture)
     physical = Process(target=phoenix.loop)
-
+    print("Start proc")
     visual.start()
     physical.start()
-
-    visual.join()
-    physical.join()
+    print("Join proc visual")
+    #visual.join()
+    print("Join proc physical")
+    #physical.join()
+    print("Starg image rec")
+    while True:
+        if not image_queue.empty():
+            image_string = image_queue.get()
+            
+            footage_socket.send(image_string)
+        time.sleep(0.01)
