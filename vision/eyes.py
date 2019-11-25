@@ -249,7 +249,7 @@ class Eyes:
         lines_behind = [l for l in lines if l.guidepoint[1] > self.image_center[1]]
         self.lines_ahead = lines_ahead
 
-        if len(lines_ahead) < 1 or len(lines_behind) < 1:
+        if len(lines_ahead) < 1:# or len(lines_behind) < 1:
             # print("No ahead lines found, nothing todo here ")
             self.yaw_drift = 0
             self.best_course = None
@@ -259,13 +259,13 @@ class Eyes:
         lines_behind.sort(key=lambda l: l.centerdistance)
 
 
-        fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
-        fend = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
-        xDiff = fend[0] - fstart[0]
-        yDiff = fend[1] - fstart[1]
+        #fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
+        #fend = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
+        #xDiff = fend[0] - fstart[0]
+        #yDiff = fend[1] - fstart[1]
 
-        self.line_length = self.h.distance(fstart, fend)
-        self.correct_yaw = round(degrees(atan2(yDiff, xDiff)), 0)
+        #self.line_length = self.h.distance(fstart, fend)
+        self.correct_yaw = lines_ahead[0].angle #round(degrees(atan2(yDiff, xDiff)), 0)
 
         yaw_drift = round(self.correct_yaw - self.heading, 0)
         self.yaw_drift = yaw_drift
