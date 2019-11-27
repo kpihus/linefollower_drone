@@ -216,13 +216,6 @@ class Phoenix:
 
     def set_attitude(self, roll_angle=0.0, pitch_angle=0.0,
                      yaw_angle=None, yaw_rate=0.0, use_yaw_rate=True):
-        """
-        Note that from AC3.3 the message should be re-sent more often than every
-        second, as an ATTITUDE_TARGET order has a timeout of 1s.
-        In AC3.2.1 and earlier the specified attitude persists until it is canceled.
-        The code below should work on either version.
-        Sending the message multiple times is the recommended way.
-        """
 
         # if any of the angles are defined as -1, keep whatever vehicle currently has
         current_attitude = self.vehicle.attitude

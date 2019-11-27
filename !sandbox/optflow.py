@@ -2,16 +2,16 @@ import numpy as np
 import cv2 as cv
 import argparse
 import time
+import zmq
+import base64
 
-THRES_VAL=100
-THRES_MAX=255
-parser = argparse.ArgumentParser(description='This sample demonstrates Lucas-Kanade Optical Flow calculation. \
-                                              The example file can be downloaded from: \
-                                              https://www.bogotobogo.com/python/OpenCV_Python/images/mean_shift_tracking/slow_traffic_small.mp4')
-cap = cv.VideoCapture('./corner_too_early.avi')
-frame_width = int(cap.get(3))
-frame_height = int(cap.get(4))
-out = cv.VideoWriter('./outpy.avi',cv.VideoWriter_fourcc('M','J','P','G'), 10, (frame_width,frame_height))
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+
+context = zmq.Context()
+footage_socket = context.socket(zmq.PUB)
+footage_socket.connect('tcp://localhost:5555')
+
 # params for ShiTomasi corner detection
 feature_params = dict( maxCorners = 100,
                        qualityLevel = 0.3,
@@ -24,14 +24,30 @@ lk_params = dict( winSize  = (15,15),
 # Create some random colors
 color = np.random.randint(0,255,(100,3))
 # Take first frame and find corners in it
-ret, old_frame = cap.read()
-old_gray = cv.cvtColor(old_frame, cv.COLOR_BGR2GRAY)
+
+
+camera = PiCamera()
+camera.resolution = (640, 480)
+camera.framerate = 32
+raw_capture = PiRGBArray(camera, size=(640, 480))
+time.sleep(1)
+
+print("getting first frame")
+camera.capture(raw_capture, format="bgr")
+image = raw_capture.array
+raw_capture.truncate(0)
+
+old_gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
 p0 = cv.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
 # Create a mask image for drawing purposes
-mask = np.zeros_like(old_frame)
-while(1):
+mask = np.zeros_like(image)
+count = 0
+
+print("Starting opt flow")
+
+for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
     start = time.time()
-    ret,frame = cap.read()
+    frame = image.array
     frame_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     # calculate optical flow
     p1, st, err = cv.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
@@ -45,8 +61,10 @@ while(1):
         mask = cv.line(mask, (a,b),(c,d), color[i].tolist(), 2)
         frame = cv.circle(frame,(a,b),5,color[i].tolist(),-1)
     img = cv.add(frame,mask)
-    cv.imshow('frame',img)
-    # out.write(img)
+    encoded, buffer = cv.imencode('.jpg', img)
+    jpg_as_text = base64.b64encode(buffer)
+    footage_socket.send(jpg_as_text)
+    #out.write(img)
     k = cv.waitKey(30) & 0xff
     if k == 27:
         break
@@ -54,3 +72,4 @@ while(1):
     old_gray = frame_gray.copy()
     p0 = good_new.reshape(-1,1,2)
     print(float(time.time() - start))
+    raw_capture.truncate(0)
