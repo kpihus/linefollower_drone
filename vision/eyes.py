@@ -15,6 +15,7 @@ from helpers.vision import Helpers
 from vision.shape import Line
 from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
+from functools import reduce
 
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -25,6 +26,7 @@ class Eyes:
         self.capture_src = 'udpsrc buffer-size=24000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)640, height=(string)640,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=60/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
         # self.capture_src = 'udpsrc port="5600" caps = "application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=(string)YCbCr-4:2:0, depth=(string)8, width=(string)720, height=(string)1280, colorimetry=(string)BT601-5, payload=(int)96, ssrc=(uint)1103043224, timestamp-offset=(uint)1948293153, seqnum-offset=(uint)27904" ! rtpvrawdepay ! videoconvert ! queue ! appsink sync=false'
         self.capture_opts = cv2.CAP_GSTREAMER
+        self.state = 'INIT'
         self.img_thres = None
         self.cap = None
         self.image_center = (0, 0)
@@ -53,6 +55,14 @@ class Eyes:
         self.yaw = 0
         self.heading = 0
 
+        self.lk_params = dict(winSize=(15, 15), maxLevel=2,
+                              criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
+        self.feature_params = dict(maxCorners=100,
+                                   qualityLevel=0.3,
+                                   minDistance=7,
+                                   blockSize=7)
+
         self.north = []
         self.east = []
         self.speed = 0
@@ -65,31 +75,125 @@ class Eyes:
 
         self.points1 = []
 
+        self.camera = None
+        self.raw_capture = None
+
     def start_capture(self):
         print('The beginning')
         if os.getenv('PLATFORM') == 'SIMU':
             self.capture_simu()
         elif os.getenv('PLATFORM') == 'BIRD':
-            self.capture_pi()
+            self.initialize_camera()
+            self.initialize_optflow()
+            self.capture_frame()
             pass
         else:
             print('Unknown platform')
             exit()
 
-    def capture_pi(self):
+    def initialize_camera(self):
         camera = PiCamera()
         camera.resolution = (640, 480)
         camera.framerate = 32
         raw_capture = PiRGBArray(camera)
         time.sleep(0.3)
+        self.camera = camera
+        self.raw_capture = raw_capture
 
-        for image in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
+
+
+    def initialize_optflow(self):
+        print("Starting optflow", time.time())
+        # Take first frame and find corners in it
+        self.camera.capture(self.raw_capture, format="bgr")
+        image = self.raw_capture.array
+        self.raw_capture.truncate(0)
+        old_frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+        p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **self.feature_params)
+        # Create a mask image for drawing purposes
+        mask = np.zeros_like(old_frame)
+
+        for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
+            if self.state == 'TAKEOFF':
+                break
+            img = image.array
             self.flight_info()
-            frame = image.array
-            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            self.process_frame(frame)
-            #cv2.imshow('orig', frame)
-            raw_capture.truncate(0)
+            print("EYES: waiting for takeoff", self.state)
+            self.send_image(img)
+            self.raw_capture.truncate(0)
+            time.sleep(0.05)
+
+        self.opt_flow(old_gray, mask, p0)
+
+    def opt_flow(self, old_gray, mask, p0):
+        print("Going optflow ...", time.time())
+        self.raw_capture.truncate(0)
+        color = np.random.randint(0, 255, (100, 3))
+
+        ROLL_DRIFT_SUM = 0
+        PITCH_DRIFT_SUM = 0
+        for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
+            self.flight_info()
+
+            raw_image = image.array
+            self.raw_capture.truncate(0)
+            if self.state != 'TAKEOFF':
+                print("Takeoff done")
+                break
+
+            pitch_drifts = []
+            roll_drifts = []
+
+            frame = cv2.rotate(raw_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if p0 is None or len(p0) < 5:
+                print("Empty p0")
+                mask = np.zeros_like(frame)
+                p0 = cv2.goodFeaturesToTrack(frame_gray.copy(), mask=None, **self.feature_params)
+                ROLL_DRIFT_SUM = 0
+                PITCH_DRIFT_SUM = 0
+                continue
+            # calculate optical flow
+            p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **self.lk_params)
+            # Select good points
+            if p1 is None:
+                print("URROR")
+                old_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+                p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **self.feature_params)
+                ROLL_DRIFT_SUM = 0
+                PITCH_DRIFT_SUM = 0
+                continue
+            good_new = p1[st == 1]
+            good_old = p0[st == 1]
+            # draw the tracks
+            for i, (new, old) in enumerate(zip(good_new, good_old)):
+                a, b = new.ravel()
+                c, d = old.ravel()
+                mask = cv2.line(mask, (a, b), (c, d), color[i].tolist(), 2)
+                frame = cv2.circle(frame, (a, b), 5, color[i].tolist(), -1)
+                roll_drifts.append(c - a)
+                pitch_drifts.append(d - b)
+            if len(pitch_drifts) < 1 or len(roll_drifts) < 1:
+                print('No drift points')
+            elif len(pitch_drifts) < 2 or len(roll_drifts) < 2:
+                ROLL_DRIFT_SUM += roll_drifts[0]
+                PITCH_DRIFT_SUM += pitch_drifts[0]
+            else:
+                ROLL_DRIFT_SUM += reduce(lambda a, b: a + b, roll_drifts) / len(roll_drifts)
+                PITCH_DRIFT_SUM += reduce(lambda a, b: a + b, pitch_drifts) / len(pitch_drifts)
+
+            img = cv2.add(frame, mask)
+            self.fcq.put(FlightCommands(time.time(), 0, ROLL_DRIFT_SUM, PITCH_DRIFT_SUM))
+            self.send_image(img)
+
+            # Now update the previous frame and previous points
+            old_gray = frame_gray.copy()
+            p0 = good_new.reshape(-1, 1, 2)
+
+
+        cv2.destroyAllWindows()
 
     def capture_simu(self):
         print("Starting video capture")
@@ -125,6 +229,7 @@ class Eyes:
                 self.yaw = data.yaw
                 self.altitude = data.altitude
                 self.speed = data.speed
+                self.state = data.state
                 # self.thres_val = self.h.map_values(data.thres_val, inMin=1000, inMax=2000, outMin=0, outMax=255) \
                 #     if not (data.thres_val is None) and data.thres_val > 0 else self.thres_val
                 # self.thres_max = self.h.map_values(data.thres_max, inMin=1000, inMax=2000, outMin=0, outMax=255) \
@@ -134,6 +239,14 @@ class Eyes:
                 if self.speed >= 0.1:
                     self.north.append(data.north)
                     self.east.append(data.east)
+
+    def capture_frame(self):
+        for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
+            self.flight_info()
+            frame = image.array
+            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            self.process_frame(frame)
+            self.raw_capture.truncate(0)
 
     def process_frame(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -410,6 +523,10 @@ class Eyes:
         except:
             pass
         cv2.imwrite("./images/image" + str(time.time()) + ".jpg", frame)
+        self.send_image(frame)
+
+
+    def send_image(self, frame):
         to_send = cv2.resize(frame, (600, 480))
 
         encoded, buffer = cv2.imencode('.jpg', to_send)

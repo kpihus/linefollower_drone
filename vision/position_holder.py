@@ -5,27 +5,31 @@ import numpy as np
 from dronekit import connect, Command, LocationGlobal, VehicleMode
 from functools import reduce
 from simple_pid import PID
+from picamera.array import PiRGBArray
+from picamera import PiCamera
+import zmq
+import base64
 
+context = zmq.Context()
+footage_socket = context.socket(zmq.PUB)
+footage_socket.connect('tcp://localhost:5555')
 
 class OpticalFlow:
     def __init__(self):
         self.vehicle = None
-        self.CONNECTION_STRING = '127.0.0.1:14540'
-        self.cap = None
+        self.CONNECTION_STRING = '/dev/ttyS0'
+        self.baud = 921600
         self.UPDATE_INTERVAL = 0.01
         self.TARGET_ALTITUDE = 1.5
 
-        self.THRUST = 0.5
-        self.roll_kpid = dict(kp=1, ki=0, kd=1)
-        self.pitch_kpid = dict(kp=1, ki=0, kd=1)
-        self.thrust_kpid = dict(kp=0.35, ki=0.2, kd=0.35)
+        self.THRUST = 0.0
+        self.roll_kpid = dict(kp=0, ki=0, kd=0)
+        self.pitch_kpid = dict(kp=0, ki=0, kd=0)
+        self.thrust_kpid = dict(kp=0.35, ki=0.01, kd=0)
 
         self.thrust_pid = None
         self.roll_pid = None
         self.pitch_pid = None
-
-        self.frame_width = 0
-        self.frame_height = 0
 
         self.lk_params = dict(winSize=(15, 15), maxLevel=2,
                          criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
@@ -41,6 +45,8 @@ class OpticalFlow:
         self.roll_angle = 0
         self.pitch_angle = 0
         self.yaw_angle = -999
+        self.camera = None
+        self.raw_capture = None
 
 
     def setup_pid(self):
@@ -61,24 +67,20 @@ class OpticalFlow:
 
 
     def connect(self):
-        self.vehicle = connect(self.CONNECTION_STRING, wait_ready=False, )
+        self.vehicle = connect(self.CONNECTION_STRING, wait_ready=False, baud=self.baud)
         self.vehicle.wait_ready('system_status', 'mode', 'armed', 'attitude')
 
         print(" Type: %s" % self.vehicle._vehicle_type)
         print(" Armed: %s" % self.vehicle.armed)
         print(" System status: %s" % self.vehicle.system_status.state)
         while not self.vehicle.armed:
-            self.gather_info()
             print(" Waiting for arming..." + str(self.vehicle.armed))
-            self.vehicle.armed = True
-            time.sleep(1)
+            time.sleep(0.1)
 
-
-    def gather_info(self):
-        self.pitch_angle = math.degrees(self.vehicle.attitude.pitch)
-        self.roll_angle = math.degrees(self.vehicle.attitude.roll)
-        # print("RP", roll, pitch)
-
+        while not self.vehicle.mode == 'OFFBOARD':
+            print('Waiting for offboard mode...')
+            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
+            time.sleep(0.1)
 
     def altitude_holder(self):
         self.THRUST = self.thrust_pid(self.vehicle.location.local_frame.down * -1)
@@ -139,19 +141,15 @@ class OpticalFlow:
         self.vehicle.send_mavlink(msg)
 
     def start_capture(self):
-        capture_src = 'udpsrc buffer-size=24000000 port=5600 caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)RAW, sampling=YCbCr-4:2:0,depth=(string)16,width=(string)640, height=(string)480,colorimetry=(string)BT601-5, payload=(int)96, a-framerate=60/1" ! rtpvrawdepay ! videoconvert ! queue ! appsink drop=true'
-        capture_opts = cv2.CAP_GSTREAMER
 
-        self.cap = cv2.VideoCapture(capture_src, capture_opts)
+        camera = PiCamera()
+        camera.resolution = (640, 480)
+        camera.framerate = 32
+        raw_capture = PiRGBArray(camera, size=(640, 480))
+        time.sleep(1)
 
-        if not self.cap.isOpened():
-            print("VideoCapture not opened")
-            exit(-1)
-        print("Cap is opened")
-
-        self.frame_width = int(self.cap.get(3))
-        self.frame_height = int(self.cap.get(4))
-
+        self.camera = camera
+        self.raw_capture = raw_capture
 
     def initialize_optflow(self):
         print("Starting optflow")
@@ -161,8 +159,10 @@ class OpticalFlow:
 
 
         # Take first frame and find corners in it
-        ret, frame = self.cap.read()
-        old_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        self.camera.capture(self.raw_capture, format="bgr")
+        image = self.raw_capture.array
+        self.raw_capture.truncate(0)
+        old_frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
         p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **self.feature_params)
         # Create a mask image for drawing purposes
@@ -174,23 +174,19 @@ class OpticalFlow:
         color = np.random.randint(0, 255, (100, 3))
 
         self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
-        # self.vehicle.mode = VehicleMode("OFFBOARD")
+        #self.vehicle.mode = VehicleMode("OFFBOARD")
 
         ROLL_DRIFT_SUM = 0
-        PITCH_DRIFT_SUM =0
-        while True:
-            self.gather_info()
+        PITCH_DRIFT_SUM = 0
+        for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
             self.altitude_holder()
             self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
             pitch_drifts = []
             roll_drifts = []
-            self.cap.grab()
-            ret, image = self.cap.retrieve()
-            if not ret:
-                print('frame empty')
-                continue
-            # rotate image 90 deg, because of landscape camera on drone
-            frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+            self.raw_capture.truncate(0)
+
+            frame = cv2.rotate(image.array, cv2.ROTATE_90_COUNTERCLOCKWISE)
             frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if p0 is None or len(p0) < 5:
                 print("Empty p0")
@@ -229,20 +225,23 @@ class OpticalFlow:
                 ROLL_DRIFT_SUM += reduce(lambda a, b: a + b, roll_drifts) / len(roll_drifts)
                 PITCH_DRIFT_SUM += reduce(lambda a, b: a + b, pitch_drifts) / len(pitch_drifts)
 
-            self.roll_angle = self.roll_pid(ROLL_DRIFT_SUM)
-            self.pitch_angle = self.pitch_pid(PITCH_DRIFT_SUM)
+            #self.roll_angle = self.roll_pid(ROLL_DRIFT_SUM)
+            #self.pitch_angle = self.pitch_pid(PITCH_DRIFT_SUM)
 
-            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
-            # print("Roll/Pitch", ROLL_DRIFT, PITCH_DRIFT)
+            # self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
             img = cv2.add(frame, mask)
-            cv2.imshow('frame', img)
-            # out.write(img)
+
+            encoded, buffer = cv2.imencode('.jpg', img)
+            jpg_as_text = base64.b64encode(buffer)
+            footage_socket.send(jpg_as_text)
+
             k = cv2.waitKey(30) & 0xff
             if k == 27:
                 break
             # Now update the previous frame and previous points
             old_gray = frame_gray.copy()
             p0 = good_new.reshape(-1, 1, 2)
+
 
         cv2.destroyAllWindows()
 

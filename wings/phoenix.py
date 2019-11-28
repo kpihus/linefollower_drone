@@ -36,12 +36,15 @@ class Phoenix:
         self.fcq = flight_commands
         self.last_flight_commands = time.time()
         self.flightData = FlightData()
-        self.thrust = 0.5
+        self.thrust = 0.1
         self.yaw_drift = 0.0
         self.roll_drift = 0.0
+        self.pitch_drift = 0.0
+        self.state = "INIT"
 
         self.altch_pid = None
         self.thrust_pid = None
+        self.pitch_pid = None
         self.roll_pid = None
         self.yaw_pid = None
 
@@ -76,12 +79,13 @@ class Phoenix:
         if self.platform == 'SIMU':
             self.vehicle.mode = VehicleMode("LOITER")
 
-        print("Starting stage ONE 'arming'")
+        print(time.time(), "Starting stage ONE 'arming'")
 
         # stage one, wait for arming
         while not self.vehicle.armed:
             self.gather_info()
-            print(" Waiting for arming..." + str(self.vehicle.armed))
+            print("Vehicle rangefinder distance", self.vehicle.rangefinder.distance)
+            print(time.time(), "Waiting for arming..." + str(self.vehicle.armed))
             if self.platform == 'SIMU':
                 self.vehicle.armed = True
             time.sleep(1)
@@ -90,27 +94,40 @@ class Phoenix:
             self.vehicle.mode = VehicleMode("OFFBOARD")
 
         while not self.vehicle.mode == 'OFFBOARD':
-            print('Waiting for offboard mode...')
+            print("Roll/PITCH", self.flightData.roll, self.flightData.pitch)
+            print(time.time(), 'Waiting for offboard mode...')
             self.gather_info()
             self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
             time.sleep(UPDATE_INTERVAL)
 
-        print("Starting stage TWO 'takeoff'")
-
-        #self.vehicle.mode = VehicleMode("LOITER")
-        #while self.flightData.altitude < TARGET_ALTITUDE:
-        #    self.gather_info()
-        #    ch3 = self.altch_pid(self.flightData.altitude)
-        #    self.vehicle.channels.overrides['3'] = ch3
-        #    time.sleep(UPDATE_INTERVAL)
-        #self.vehicle.channels.overrides['3'] = None
-
+        print(time.time(), "Starting stage TWO 'takeoff'")
         # setup PIDs
         self.setup_pids()
+
+        while True: #self.flightData.altitude < TARGET_ALTITUDE:
+            self.state = "TAKEOFF"
+            self.gather_info()
+
+            if not self.fcq.empty():
+                flight_commands = self.fcq.get()
+                if flight_commands and flight_commands.timestamp > self.last_flight_commands:
+                    self.yaw_drift = flight_commands.yaw_drift
+                    self.roll_drift = flight_commands.roll_drift
+                    self.pitch_drift = flight_commands.pitch_drift
+                    self.roll_holder()
+                    self.pitch_holder()
+                    print(time.time(), "Takeoff drifts:", self.roll_drift, self.pitch_drift)
+
+            self.altitude_holder()
+            self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
+
+            time.sleep(UPDATE_INTERVAL)
+
 
         pitch_activate = time.time() + self.takeoff_stage_time
         print("Starting stage FOUR 'AI'", time.time())
         while self.vehicle.mode != "LAND":
+            self.state = "FLY"
             start = time.time()
             if not self.fcq.empty():
                 flight_commands = self.fcq.get()
@@ -184,6 +201,16 @@ class Phoenix:
         self.yaw_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
         self.yaw_pid.output_limits = (-60, 60)
 
+        # ------------------- PITCH
+        pitch_kp = float(os.getenv('PITCH_KP'))
+        pitch_ki = float(os.getenv('PITCH_KI'))
+        pitch_kd = float(os.getenv('PITCH_KD'))
+
+        # PID for yaw
+        self.pitch_pid = PID(pitch_kp, pitch_ki, pitch_kd, setpoint=0)
+        self.pitch_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
+        self.pitch_pid.output_limits = (-2, 2)
+
     def gather_info(self):
         altitude = self.vehicle.location.local_frame.down * -1
         pitch = math.degrees(self.vehicle.attitude.pitch)
@@ -194,12 +221,13 @@ class Phoenix:
         speed = self.vehicle.groundspeed
         thres_val = self.vehicle.channels['7']
         thres_max = self.vehicle.channels['8']
-        self.flightData = FlightData(time.time(), altitude, pitch, roll, yaw, north, east, speed, thres_val, thres_max)
+        state = self.state
+        self.flightData = FlightData(time.time(), altitude, pitch, roll, yaw, north, east, speed, thres_val, thres_max, state)
         self.fpq.put(self.flightData)
 
     def altitude_holder(self):
         self.thrust = self.thrust_pid(self.flightData.altitude)
-        print("new thrust", self.thrust)
+        print("new thrust", self.thrust, " from altitude ", self.flightData.altitude)
 
     def roll_holder(self):
         self.roll_angle = self.roll_pid(self.roll_drift)
@@ -208,6 +236,10 @@ class Phoenix:
 
     def yaw_holder(self):
         self.yaw_angle = math.degrees(self.vehicle.attitude.yaw) - self.yaw_pid(self.yaw_drift)
+        pass
+
+    def pitch_holder(self):
+        self.pitch_angle = self.pitch_pid(self.pitch_drift)
         pass
 
     def land(self):
@@ -242,7 +274,7 @@ class Phoenix:
         if yaw_angle is None:
             yaw_angle = 0.0
 
-        # print("New attitude", roll_angle, pitch_angle, yaw_angle)
+        print("New attitude", roll_angle, pitch_angle, yaw_angle, self.thrust, self.flightData.altitude)
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude
