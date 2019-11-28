@@ -60,7 +60,7 @@ class Phoenix:
         self.takeoff_stage_time = 1
         self.start_moving_time = 1
 
-        print("Current platform:", self.platform)
+        #print("Current platform:", self.platform)
 
     def loop(self):
         """
@@ -79,13 +79,32 @@ class Phoenix:
         if self.platform == 'SIMU':
             self.vehicle.mode = VehicleMode("LOITER")
 
-        print(time.time(), "Starting stage ONE 'arming'")
+        self.gather_info()
+        hold_north = self.flightData.north
+        hold_east = self.flightData.east
+
+        #print(time.time(), "Starting stage ONE 'arming'")
+        while True:
+            self.gather_info()
+
+            print("holding", hold_north, hold_east)
+            msg = self.vehicle.message_factory.set_position_target_local_ned_encode(
+                0,  # time_boot_ms (not used)
+                0, 0,  # target system, target component
+                mavutil.mavlink.MAV_FRAME_LOCAL_NED,  # frame
+                0b0000111111111000,  # type_mask (only positions enabled)
+                hold_north, hold_east, -1,
+                0, 0, 0,  # x, y, z velocity in m/s  (not used)
+                0, 0, 0,  # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
+                0, 0)  # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink)
+            # send command to vehicle
+            self.vehicle.send_mavlink(msg)
 
         # stage one, wait for arming
         while not self.vehicle.armed:
             self.gather_info()
-            print("Vehicle rangefinder distance", self.vehicle.rangefinder.distance)
-            print(time.time(), "Waiting for arming..." + str(self.vehicle.armed))
+            #print("Vehicle rangefinder distance", self.vehicle.rangefinder.distance)
+            #print(time.time(), "Waiting for arming..." + str(self.vehicle.armed))
             if self.platform == 'SIMU':
                 self.vehicle.armed = True
             time.sleep(1)
@@ -94,13 +113,13 @@ class Phoenix:
             self.vehicle.mode = VehicleMode("OFFBOARD")
 
         while not self.vehicle.mode == 'OFFBOARD':
-            print("Roll/PITCH", self.flightData.roll, self.flightData.pitch)
-            print(time.time(), 'Waiting for offboard mode...')
+            #print("Roll/PITCH", self.flightData.roll, self.flightData.pitch)
+            #print(time.time(), 'Waiting for offboard mode...')
             self.gather_info()
             self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
             time.sleep(UPDATE_INTERVAL)
 
-        print(time.time(), "Starting stage TWO 'takeoff'")
+        #print(time.time(), "Starting stage TWO 'takeoff'")
         # setup PIDs
         self.setup_pids()
 
@@ -114,9 +133,9 @@ class Phoenix:
                     self.yaw_drift = flight_commands.yaw_drift
                     self.roll_drift = flight_commands.roll_drift
                     self.pitch_drift = flight_commands.pitch_drift
-                    self.roll_holder()
-                    self.pitch_holder()
-                    print(time.time(), "Takeoff drifts:", self.roll_drift, self.pitch_drift)
+                    #self.roll_holder()
+                    #self.pitch_holder()
+                    #print(time.time(), "Takeoff drifts:", self.roll_drift, self.pitch_drift)
 
             self.altitude_holder()
             self.set_attitude(self.roll_angle, self.pitch_angle, self.yaw_angle, 0.0, False)
@@ -125,7 +144,7 @@ class Phoenix:
 
 
         pitch_activate = time.time() + self.takeoff_stage_time
-        print("Starting stage FOUR 'AI'", time.time())
+        #print("Starting stage FOUR 'AI'", time.time())
         while self.vehicle.mode != "LAND":
             self.state = "FLY"
             start = time.time()
@@ -136,7 +155,7 @@ class Phoenix:
                     self.roll_drift = flight_commands.roll_drift
 
             if time.time() > pitch_activate and self.pitch_angle == 0:
-                print("Activating pitch")
+                #print("Activating pitch")
                 self.pitch_angle = -float(os.getenv('SPEED'))
 
             self.gather_info()
@@ -150,12 +169,12 @@ class Phoenix:
             time.sleep(UPDATE_INTERVAL)
 
     def connect(self):
-        print("Connecting to Bird")
+        #print("Connecting to Bird")
         vehicle = connect(self.connection_string, wait_ready=False, baud=int(os.getenv('BAUD')))
         vehicle.wait_ready('system_status', 'mode', 'armed', 'attitude')
-        print(" Type: %s" % vehicle._vehicle_type)
-        print(" Armed: %s" % vehicle.armed)
-        print(" System status: %s" % vehicle.system_status.state)
+        #print(" Type: %s" % vehicle._vehicle_type)
+        #print(" Armed: %s" % vehicle.armed)
+        #print(" System status: %s" % vehicle.system_status.state)
         self.vehicle = vehicle
 
     def setup_pids(self):
@@ -218,6 +237,7 @@ class Phoenix:
         yaw = math.degrees(self.vehicle.attitude.yaw)
         north = self.vehicle.location.local_frame.north
         east = self.vehicle.location.local_frame.east
+        print("North/east", north, east)
         speed = self.vehicle.groundspeed
         thres_val = self.vehicle.channels['7']
         thres_max = self.vehicle.channels['8']
@@ -227,11 +247,11 @@ class Phoenix:
 
     def altitude_holder(self):
         self.thrust = self.thrust_pid(self.flightData.altitude)
-        print("new thrust", self.thrust, " from altitude ", self.flightData.altitude)
+        #print("new thrust", self.thrust, " from altitude ", self.flightData.altitude)
 
     def roll_holder(self):
         self.roll_angle = self.roll_pid(self.roll_drift)
-        #print("new roll angle", self.roll_angle)
+        ##print("new roll angle", self.roll_angle)
         pass
 
     def yaw_holder(self):
@@ -274,7 +294,7 @@ class Phoenix:
         if yaw_angle is None:
             yaw_angle = 0.0
 
-        print("New attitude", roll_angle, pitch_angle, yaw_angle, self.thrust, self.flightData.altitude)
+        #print("New attitude", roll_angle, pitch_angle, yaw_angle, self.thrust, self.flightData.altitude)
 
         # Thrust >  0.5: Ascend
         # Thrust == 0.5: Hold the altitude

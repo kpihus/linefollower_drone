@@ -8,7 +8,7 @@ import math
 import time
 
 import numpy as np
-from math import atan2, degrees
+from math import atan2, degrees, tan
 import base64
 
 from helpers.vision import Helpers
@@ -79,7 +79,7 @@ class Eyes:
         self.raw_capture = None
 
     def start_capture(self):
-        print('The beginning')
+        #print('The beginning')
         if os.getenv('PLATFORM') == 'SIMU':
             self.capture_simu()
         elif os.getenv('PLATFORM') == 'BIRD':
@@ -88,7 +88,7 @@ class Eyes:
             self.capture_frame()
             pass
         else:
-            print('Unknown platform')
+            #print('Unknown platform')
             exit()
 
     def initialize_camera(self):
@@ -100,10 +100,8 @@ class Eyes:
         self.camera = camera
         self.raw_capture = raw_capture
 
-
-
     def initialize_optflow(self):
-        print("Starting optflow", time.time())
+        #print("Starting optflow", time.time())
         # Take first frame and find corners in it
         self.camera.capture(self.raw_capture, format="bgr")
         image = self.raw_capture.array
@@ -119,7 +117,7 @@ class Eyes:
                 break
             img = image.array
             self.flight_info()
-            print("EYES: waiting for takeoff", self.state)
+            #print("EYES: waiting for takeoff", self.state)
             self.send_image(img)
             self.raw_capture.truncate(0)
             time.sleep(0.05)
@@ -127,19 +125,20 @@ class Eyes:
         self.opt_flow(old_gray, mask, p0)
 
     def opt_flow(self, old_gray, mask, p0):
-        print("Going optflow ...", time.time())
+        #print("Going optflow ...", time.time())
         self.raw_capture.truncate(0)
         color = np.random.randint(0, 255, (100, 3))
 
         ROLL_DRIFT_SUM = 0
         PITCH_DRIFT_SUM = 0
         for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
+            start_time = time.time()
             self.flight_info()
 
             raw_image = image.array
             self.raw_capture.truncate(0)
             if self.state != 'TAKEOFF':
-                print("Takeoff done")
+                #print("Takeoff done")
                 break
 
             pitch_drifts = []
@@ -148,7 +147,7 @@ class Eyes:
             frame = cv2.rotate(raw_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
             frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if p0 is None or len(p0) < 5:
-                print("Empty p0")
+                #print("Empty p0")
                 mask = np.zeros_like(frame)
                 p0 = cv2.goodFeaturesToTrack(frame_gray.copy(), mask=None, **self.feature_params)
                 ROLL_DRIFT_SUM = 0
@@ -158,7 +157,7 @@ class Eyes:
             p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **self.lk_params)
             # Select good points
             if p1 is None:
-                print("URROR")
+                #print("URROR")
                 old_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
                 p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **self.feature_params)
@@ -168,15 +167,20 @@ class Eyes:
             good_new = p1[st == 1]
             good_old = p0[st == 1]
             # draw the tracks
+            #print("Eyes image half loop time", time.time() - start_time)
             for i, (new, old) in enumerate(zip(good_new, good_old)):
                 a, b = new.ravel()
                 c, d = old.ravel()
-                mask = cv2.line(mask, (a, b), (c, d), color[i].tolist(), 2)
+                #mask = cv2.line(mask, (a, b), (c, d), color[i].tolist(), 2)
                 frame = cv2.circle(frame, (a, b), 5, color[i].tolist(), -1)
-                roll_drifts.append(c - a)
-                pitch_drifts.append(d - b)
+                if abs(c - a) > 0:
+                    roll_drifts.append(c - a)
+
+                if abs(d - b) > 0:
+                    pitch_drifts.append(d - b)
             if len(pitch_drifts) < 1 or len(roll_drifts) < 1:
-                print('No drift points')
+                #print('No drift points')
+                pass
             elif len(pitch_drifts) < 2 or len(roll_drifts) < 2:
                 ROLL_DRIFT_SUM += roll_drifts[0]
                 PITCH_DRIFT_SUM += pitch_drifts[0]
@@ -184,35 +188,51 @@ class Eyes:
                 ROLL_DRIFT_SUM += reduce(lambda a, b: a + b, roll_drifts) / len(roll_drifts)
                 PITCH_DRIFT_SUM += reduce(lambda a, b: a + b, pitch_drifts) / len(pitch_drifts)
 
-            img = cv2.add(frame, mask)
-            self.fcq.put(FlightCommands(time.time(), 0, ROLL_DRIFT_SUM, PITCH_DRIFT_SUM))
+            img = frame
+
+            # calculate half frame length in cm
+            half_frame_cm_roll = tan(27.25) * self.altitude
+            cm_per_px_roll = half_frame_cm_roll / 240
+
+            half_frame_cm_pitch = tan(37.23) * self.altitude
+            cm_per_px_pitch = half_frame_cm_pitch / 320
+
+            # take average to minimize error
+            cm_per_px = (cm_per_px_pitch + cm_per_px_roll) / 2
+            #print("cm per px", cm_per_px)
+            #print("drifts", ROLL_DRIFT_SUM, PITCH_DRIFT_SUM)
+
+            cv2.putText(frame, "Drifts " + str(round(ROLL_DRIFT_SUM * cm_per_px, 2)) + " " + str(round(PITCH_DRIFT_SUM * cm_per_px, 2)), (20, 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (100, 255, 100), 2)
+
+            self.fcq.put(FlightCommands(time.time(), 0, -ROLL_DRIFT_SUM * cm_per_px, PITCH_DRIFT_SUM * cm_per_px))
             self.send_image(img)
 
             # Now update the previous frame and previous points
             old_gray = frame_gray.copy()
             p0 = good_new.reshape(-1, 1, 2)
+            #print("Eyes image full loop time", time.time() - start_time)
 
-
-        cv2.destroyAllWindows()
 
     def capture_simu(self):
-        print("Starting video capture")
+        #print("Starting video capture")
         self.cap = cv2.VideoCapture(self.capture_src, self.capture_opts)
-        print("got cap")
+        #print("got cap")
         if not self.cap.isOpened():
-            print("VideoCapture not opened")
+            #print("VideoCapture not opened")
             exit(-1)
-        print("Cap is opened")
+        #print("Cap is opened")
 
         while True:
-            print("Got frame")
+            #print("Got frame")
             self.flight_info()
 
             self.cap.grab()
 
             ret, image = self.cap.retrieve()
             if not ret:
-                print('frame empty')
+                #print('frame empty')
                 continue
             # rotate image 90 deg, because of landscape camera on drone
             frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
@@ -280,7 +300,7 @@ class Eyes:
         self.calculate_yaw_drift()
         self.calculate_meters_in_view()
 
-        # print("Rolldrift " + str(self.roll_drift)+ " | Yaw drift " + str(self.yaw_drift))
+        # #print("Rolldrift " + str(self.roll_drift)+ " | Yaw drift " + str(self.yaw_drift))
 
         # reset flight path history
         if len(self.north) >= 20:
@@ -343,7 +363,7 @@ class Eyes:
         lines = self.lines
 
         if len(lines) < 2:
-            # print("Not enough lines found, nothing to do here")
+            # #print("Not enough lines found, nothing to do here")
             self.roll_line = None
             self.roll_drift = 0
             return
@@ -363,7 +383,7 @@ class Eyes:
         self.lines_ahead = lines_ahead
 
         if len(lines_ahead) < 1:# or len(lines_behind) < 1:
-            # print("No ahead lines found, nothing todo here ")
+            # #print("No ahead lines found, nothing todo here ")
             self.yaw_drift = 0
             self.best_course = None
             return
