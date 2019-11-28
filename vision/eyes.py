@@ -17,6 +17,10 @@ from vision.shapedetector import ShapeDetector
 from models.data import FlightCommands
 from functools import reduce
 
+MIN_AREA = 300
+MAX_AREA = 3500
+MIN_RATIO = 0.10
+MAX_RATIO = 0.25
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -55,14 +59,6 @@ class Eyes:
         self.yaw = 0
         self.heading = 0
 
-        self.lk_params = dict(winSize=(15, 15), maxLevel=2,
-                              criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
-        self.feature_params = dict(maxCorners=100,
-                                   qualityLevel=0.3,
-                                   minDistance=7,
-                                   blockSize=7)
-
         self.north = []
         self.east = []
         self.speed = 0
@@ -72,6 +68,7 @@ class Eyes:
         self.velocity_line = None
         self.moving_line = None
         self.drive_dir = None
+        self.last_non_zero_roll_drift = 0
 
         self.points1 = []
 
@@ -84,7 +81,6 @@ class Eyes:
             self.capture_simu()
         elif os.getenv('PLATFORM') == 'BIRD':
             self.initialize_camera()
-            self.initialize_optflow()
             self.capture_frame()
             pass
         else:
@@ -99,121 +95,6 @@ class Eyes:
         time.sleep(0.3)
         self.camera = camera
         self.raw_capture = raw_capture
-
-    def initialize_optflow(self):
-        #print("Starting optflow", time.time())
-        # Take first frame and find corners in it
-        self.camera.capture(self.raw_capture, format="bgr")
-        image = self.raw_capture.array
-        self.raw_capture.truncate(0)
-        old_frame = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-        p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **self.feature_params)
-        # Create a mask image for drawing purposes
-        mask = np.zeros_like(old_frame)
-
-        for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
-            if self.state == 'TAKEOFF':
-                break
-            img = image.array
-            self.flight_info()
-            #print("EYES: waiting for takeoff", self.state)
-            self.send_image(img)
-            self.raw_capture.truncate(0)
-            time.sleep(0.05)
-
-        self.opt_flow(old_gray, mask, p0)
-
-    def opt_flow(self, old_gray, mask, p0):
-        #print("Going optflow ...", time.time())
-        self.raw_capture.truncate(0)
-        color = np.random.randint(0, 255, (100, 3))
-
-        ROLL_DRIFT_SUM = 0
-        PITCH_DRIFT_SUM = 0
-        for image in self.camera.capture_continuous(self.raw_capture, format="bgr", use_video_port=True):
-            start_time = time.time()
-            self.flight_info()
-
-            raw_image = image.array
-            self.raw_capture.truncate(0)
-            if self.state != 'TAKEOFF':
-                #print("Takeoff done")
-                break
-
-            pitch_drifts = []
-            roll_drifts = []
-
-            frame = cv2.rotate(raw_image, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if p0 is None or len(p0) < 5:
-                #print("Empty p0")
-                mask = np.zeros_like(frame)
-                p0 = cv2.goodFeaturesToTrack(frame_gray.copy(), mask=None, **self.feature_params)
-                ROLL_DRIFT_SUM = 0
-                PITCH_DRIFT_SUM = 0
-                continue
-            # calculate optical flow
-            p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **self.lk_params)
-            # Select good points
-            if p1 is None:
-                #print("URROR")
-                old_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-                p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **self.feature_params)
-                ROLL_DRIFT_SUM = 0
-                PITCH_DRIFT_SUM = 0
-                continue
-            good_new = p1[st == 1]
-            good_old = p0[st == 1]
-            # draw the tracks
-            #print("Eyes image half loop time", time.time() - start_time)
-            for i, (new, old) in enumerate(zip(good_new, good_old)):
-                a, b = new.ravel()
-                c, d = old.ravel()
-                #mask = cv2.line(mask, (a, b), (c, d), color[i].tolist(), 2)
-                frame = cv2.circle(frame, (a, b), 5, color[i].tolist(), -1)
-                if abs(c - a) > 0:
-                    roll_drifts.append(c - a)
-
-                if abs(d - b) > 0:
-                    pitch_drifts.append(d - b)
-            if len(pitch_drifts) < 1 or len(roll_drifts) < 1:
-                #print('No drift points')
-                pass
-            elif len(pitch_drifts) < 2 or len(roll_drifts) < 2:
-                ROLL_DRIFT_SUM += roll_drifts[0]
-                PITCH_DRIFT_SUM += pitch_drifts[0]
-            else:
-                ROLL_DRIFT_SUM += reduce(lambda a, b: a + b, roll_drifts) / len(roll_drifts)
-                PITCH_DRIFT_SUM += reduce(lambda a, b: a + b, pitch_drifts) / len(pitch_drifts)
-
-            img = frame
-
-            # calculate half frame length in cm
-            half_frame_cm_roll = tan(27.25) * self.altitude
-            cm_per_px_roll = half_frame_cm_roll / 240
-
-            half_frame_cm_pitch = tan(37.23) * self.altitude
-            cm_per_px_pitch = half_frame_cm_pitch / 320
-
-            # take average to minimize error
-            cm_per_px = (cm_per_px_pitch + cm_per_px_roll) / 2
-            #print("cm per px", cm_per_px)
-            #print("drifts", ROLL_DRIFT_SUM, PITCH_DRIFT_SUM)
-
-            cv2.putText(frame, "Drifts " + str(round(ROLL_DRIFT_SUM * cm_per_px, 2)) + " " + str(round(PITCH_DRIFT_SUM * cm_per_px, 2)), (20, 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        (100, 255, 100), 2)
-
-            self.fcq.put(FlightCommands(time.time(), 0, -ROLL_DRIFT_SUM * cm_per_px, PITCH_DRIFT_SUM * cm_per_px))
-            self.send_image(img)
-
-            # Now update the previous frame and previous points
-            old_gray = frame_gray.copy()
-            p0 = good_new.reshape(-1, 1, 2)
-            #print("Eyes image full loop time", time.time() - start_time)
-
 
     def capture_simu(self):
         #print("Starting video capture")
@@ -280,127 +161,116 @@ class Eyes:
 
         self.image_center = (int(cols / 2), int(rows / 2))
 
-        # figure out flying direction (only if enough samples exists
-        if len(self.north) > 10 and len(self.east) > 10:
-            fstart = (self.north[0], self.east[0])
-            fend = (self.north[-1], self.east[-1])
-            xDiff = fend[0] - fstart[0]
-            yDiff = fend[1] - fstart[1]
-
-            angle = degrees(atan2(yDiff, xDiff))
-
         self.heading = 0 #angle - self.yaw
         if self.heading < -180:
             self.heading += 360
 
 
         # Calculate and process all kind of stuff
-        self.process_contours()
+        self.process_contours(frame)
         self.calculate_roll_drift()
         self.calculate_yaw_drift()
         self.calculate_meters_in_view()
 
-        # #print("Rolldrift " + str(self.roll_drift)+ " | Yaw drift " + str(self.yaw_drift))
+        print("Rolldrift " + str(self.roll_drift)+ " | Yaw drift " + str(self.yaw_drift))
 
-        # reset flight path history
-        if len(self.north) >= 20:
-            self.north.pop(0)
+        if self.roll_drift != 0:
+            self.last_non_zero_roll_drift = self.roll_drift
 
-        if len(self.east) >= 20:
-            self.east.pop(0)
-        self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.roll_drift))
+        self.fcq.put(FlightCommands(time.time(), self.yaw_drift, self.last_non_zero_roll_drift))
+
         self.draw_image(frame)
 
-    def process_contours(self):
-        sd = ShapeDetector()
+
+    def process_contours(self, frame):
         lines = []
         bad_lines = []
-        points1 = []
+        # dont process frames with huge amount of contours
+        if self.conts[1] and len(self.conts[1]) > 50:
+            print("Skipping image due to cont count", len(self.conts[1]))
+            return
         for c in self.conts[1]:
-            shape = sd.detect(c)
-            if shape == "rectangle":
-                moments = cv2.moments(c)  # get rectangle X and Y axis -  https://www.youtube.com/watch?v=AAbUfZD_09s
-                if moments["m00"] == 0:
-                    continue
-                # calculate center point of rectangle
-                cx = int(moments["m10"] / moments["m00"])
-                cy = int(moments["m01"] / moments["m00"])
-            else:
+            # x, y, w, h = cv2.boundingRect(c)
+            # cv2.rectangle(oimg, (x, y), (x + w, y + h), (255, 255, 255), 2)
+            rect = cv2.minAreaRect(c)
+            box = cv2.boxPoints(rect)
+            box = np.int0(box)
+            area = cv2.contourArea(box)
+            # if MIN_AREA < area < MAX_AREA:
+            #   continue
+            moments = cv2.moments(c)
+            if moments["m00"] == 0:
                 continue
-
+            cx = int(moments["m10"] / moments["m00"])
+            cy = int(moments["m01"] / moments["m00"])
+            contour_width = rect[1][0]
+            contour_height = rect[1][1]
+            # calculates contour side ratio
+            contour_side_ratio = contour_height / contour_width if contour_height < contour_width else contour_width / contour_height
             [vx, vy, x, y] = cv2.fitLine(c, cv2.DIST_L2, 0, 0.01, 0.01)
-
             # Point all line to northish direction
-
             vxa = -vy
             vya = vx
             if vxa < 0:
                 vxa = -vxa
                 vya = -vya
-
             lefty = int((-x * vy / vx) + y)
             righty = int(((self.image_cols - x) * vy / vx) + y)
-
             point1 = (self.image_cols - 1, righty)
             point2 = (0, lefty)
-
-
-
             self.points1.append(point1)
-
             newline = Line((cx, cy), point1, point2, self.image_center)
-            newline.angle = degrees(atan2(vya, vxa))# * -1
-
-            if self.heading is not None and -40 < self.heading - newline.angle < 40:
+            newline.angle = degrees(atan2(vya, vxa))  # * -1
+            if MIN_AREA < area < MAX_AREA and MIN_RATIO < contour_side_ratio < MAX_RATIO and -40 < self.heading - newline.angle < 40:
                 lines.append(newline)
             else:
                 bad_lines.append(newline)
+            # if rect[1][0] > 10:
+                # cv2.putText(frame,
+                #             str(round(rect[1][0])) + '-' + str(round(rect[1][1])) + '|' + str(area) + ' | ' + str(
+                #                 round(contour_side_ratio, 2)), (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                #             (10, 100, 100), 2)
 
         self.bad_lines = bad_lines
         self.lines = lines
 
     def calculate_roll_drift(self):
         lines = self.lines
-
-        if len(lines) < 2:
-            # #print("Not enough lines found, nothing to do here")
+        if not self.lines or len(lines) < 2:
+            print("Not enough lines found, nothing to do here")
             self.roll_line = None
             self.roll_drift = 0
             return
-
         lines.sort(key=lambda l: l.centerdistance)
         roll_line = Line(lines[0].guidepoint, lines[0].guidepoint, lines[1].guidepoint, self.image_center)
         cross_line = roll_line.plot_point(self.image_center, int(roll_line.angle) + 90, 250)
         cross_point = Line.line_intersection((roll_line.p1, roll_line.p2), (cross_line[0], cross_line[1]))
         self.roll_line = roll_line
         self.roll_drift = -round(self.h.distance_non_abs(cross_point, self.image_center), 0)
+        #if self.yaw_drift < -10 or self.yaw_drift > 10:
+        #    self.roll_drift = 0
 
     def calculate_yaw_drift(self):
         lines = self.lines
+        if not self.lines:
+            return
         # lines_ahead = self.lines
         lines_ahead = [l for l in lines if l.guidepoint[1] <= self.image_center[1]]
         lines_behind = [l for l in lines if l.guidepoint[1] > self.image_center[1]]
         self.lines_ahead = lines_ahead
-
-        if len(lines_ahead) < 1:# or len(lines_behind) < 1:
-            # #print("No ahead lines found, nothing todo here ")
+        if len(lines_ahead) < 1:
+            # print("No ahead lines found, nothing todo here ")
             self.yaw_drift = 0
             self.best_course = None
             return
-
         lines_ahead.sort(key=lambda l: l.centerdistance)
-        lines_behind.sort(key=lambda l: l.centerdistance)
-
-
-        #fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
-        #fend = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
-        #xDiff = fend[0] - fstart[0]
-        #yDiff = fend[1] - fstart[1]
-
-        #self.line_length = self.h.distance(fstart, fend)
-        self.correct_yaw = lines_ahead[0].angle #round(degrees(atan2(yDiff, xDiff)), 0)
-
-        yaw_drift = round(self.correct_yaw - self.heading, 0)
+        # fstart = (-lines_behind[0].guidepoint[1], lines_behind[0].guidepoint[0])
+        # fend = (-lines_ahead[0].guidepoint[1], lines_ahead[0].guidepoint[0])
+        # xDiff = fend[0] - fstart[0]
+        # yDiff = fend[1] - fstart[1]
+        # self.correct_yaw = round(degrees(atan2(yDiff, xDiff)), 0)
+        # yaw_drift = round(self.correct_yaw - self.heading, 0)
+        yaw_drift = lines_ahead[0].angle
         self.yaw_drift = yaw_drift
 
     def calculate_meters_in_view(self):
