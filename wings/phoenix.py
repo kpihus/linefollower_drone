@@ -87,7 +87,7 @@ class Phoenix:
         self.setup_pids()
 
         #print(time.time(), "Starting stage ONE 'arming'")
-        while self.flightData.altitude < TARGET_ALTITUDE - 0.1:
+        while self.flightData.altitude < TARGET_ALTITUDE - 0.2:
             self.gather_info()
 
             print("holding", hold_north, hold_east)
@@ -96,13 +96,16 @@ class Phoenix:
                 0, 0,  # target system, target component
                 mavutil.mavlink.MAV_FRAME_LOCAL_NED,  # frame
                 0b0000111111111000,  # type_mask (only positions enabled)
-                hold_north, hold_east, -TARGET_ALTITUDE + 0.1,
+                hold_north, hold_east, -TARGET_ALTITUDE + 0.2,
                 0, 0, 0,  # x, y, z velocity in m/s  (not used)
                 0, 0, 0,  # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
                 0, 0)  # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink)
             # send command to vehic         le
             self.vehicle.send_mavlink(msg)
-            self.altitude_holder()
+
+            if self.flightData.altitude > 0.1:
+                self.altitude_holder()
+
             print("Pre takeoff thrust", self.thrust)
 
             time.sleep(UPDATE_INTERVAL)
@@ -159,7 +162,7 @@ class Phoenix:
         # Setup PID
         self.thrust_pid = PID(thrust_kp, thrust_ki, thrust_kd, setpoint=TARGET_ALTITUDE)
         self.thrust_pid.sample_time = UPDATE_INTERVAL  # we're currently updating this 0.01
-        self.thrust_pid.output_limits = (0.32, 1)
+        self.thrust_pid.output_limits = (0.39, 1)
 
         # ------------------- ROLL
 
