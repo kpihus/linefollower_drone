@@ -15,7 +15,9 @@ class FlightData:
 
 
 class FlightCommands:
-    def __init__(self, timestamp, yaw_drift, roll_drift):
+    def __init__(self, timestamp, yaw_drift, roll_drift, lines, opt_flow_speed):
         self.timestamp = timestamp
         self.yaw_drift = yaw_drift
         self.roll_drift = roll_drift
+        self.number_of_lines = lines
+        self.opt_flow_speed = opt_flow_speed
