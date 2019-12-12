@@ -14,4 +14,4 @@ Proof Of Concept / Work In Progress solution for line following quadcopter
 * OpenCV
 * DroneKit
 
-_to be continued ... _
+to be continued ... 
